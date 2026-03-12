@@ -11,7 +11,12 @@ from ._counting import count_vntrs
 _USAGE = """
 Count reads overlapping VNTR regions in SAM/BAM/CRAM files.
 Outputs predicted copy numbers by default (bundled GENCODE v38 used for normalization).
-Pass --no-gtf to disable normalization and return raw read counts instead.
+
+Normalization methods (--norm-method):
+    gene   (default) Normalize against the host gene region. Uses bundled GENCODE v38
+                     unless --gtf is supplied. Pass --no-gtf to disable normalization.
+    local            Normalize against a fixed-size window flanking each VNTR
+                     (default: 5 kb on each side). No GTF required.
 
 Region selection (at least one required):
     --default               Use all VNTRs in the built-in BED file
@@ -23,20 +28,20 @@ Region selection (at least one required):
     --regions can be combined with any other option.
 
 Examples:
-    # All built-in VNTRs (uses bundled GENCODE v38 automatically)
+    # All built-in VNTRs — gene normalization with bundled GENCODE v38
     vntr-count --default -i s1.cram -T ref.fa -o out.csv
 
-    # Subset by gene
-    vntr-count --gene SLC6A3 BRCA1 -i s1.cram -T ref.fa -o out.csv
+    # Local window normalization (5 kb flanks)
+    vntr-count --default -i s1.cram --norm-method local -T ref.fa -o out.csv
 
-    # Use a custom GTF
+    # Local normalization with a custom window size (10 kb)
+    vntr-count --default -i s1.cram --norm-method local --norm-window 10000 -T ref.fa -o out.csv
+
+    # Gene normalization with a custom GTF
     vntr-count --default -i s1.cram -g my_annotation.gtf.gz -T ref.fa -o out.csv
 
     # Raw read counts only (no normalization)
     vntr-count --default -i s1.cram --no-gtf -T ref.fa -o out.csv
-
-    # Custom BED file
-    vntr-count -r my_vntrs.bed -i s1.cram -T ref.fa -o out.csv
 
 Output:
     CSV with columns: sample, metric, <vntr_1>, <vntr_2>, ...
@@ -125,6 +130,22 @@ def main():
             "Examples: --norm-gene-types protein_coding lncRNA"
         ),
     )
+    parser.add_argument(
+        "--norm-method", default="gene", choices=["gene", "local"], metavar="METHOD",
+        help=(
+            "Normalization method: 'gene' (default) normalizes against the host gene "
+            "region using a GTF; 'local' normalizes against a fixed-size window "
+            "flanking each VNTR (see --norm-window). With 'local', --gtf is ignored."
+        ),
+    )
+    parser.add_argument(
+        "--norm-window", type=int, default=5000, metavar="BP",
+        help=(
+            "Flank size in bp for local normalization (default: 5000). "
+            "The background window spans norm_window bp on each side of the VNTR. "
+            "Only used when --norm-method local."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -143,17 +164,22 @@ def main():
             "--gene/--vntr to select a subset."
         )
 
+    # local method implies no GTF
+    effective_gtf = None if (args.no_gtf or args.norm_method == "local") else args.gtf
+
     count_vntrs(
         args.input,
         default=args.default,
         gene=args.gene,
         vntr=args.vntr,
         regions=args.regions,
-        gtf=None if args.no_gtf else args.gtf,
+        gtf=effective_gtf,
         reference=args.reference,
         psl=args.psl,
         no_alt_contigs=args.no_alt_contigs,
         norm_gene_types=args.norm_gene_types,
+        norm_method=args.norm_method,
+        norm_window=args.norm_window,
         output_csv=args.output,
     )
 

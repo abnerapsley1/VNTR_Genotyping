@@ -163,6 +163,8 @@ def count_vntrs(
     psl=DEFAULT_PSL,
     no_alt_contigs=False,
     norm_gene_types=("protein_coding",),
+    norm_method="gene",
+    norm_window=5000,
     output_csv=None,
 ):
     """
@@ -182,23 +184,35 @@ def count_vntrs(
         Path to a custom BED file (combinable with default/gene/vntr).
     gtf : str or None, optional
         Path to a GTF or GTF.gz annotation file. Defaults to the bundled
-        GENCODE v38 gene annotation. When provided, predicted copy numbers
-        (or density ratios for VNTRs without a period) are returned.
+        GENCODE v38 gene annotation. Used only when norm_method='gene'.
         Pass gtf=None to disable normalization and return raw read counts.
+        Ignored when norm_method='local'.
     reference : str, optional
         Path to a reference FASTA. Required for CRAM files without an
         embedded reference sequence.
     psl : str, optional
         Path to UCSC altSeqLiftOverPsl.txt(.gz). Used to include alt-contig
         reads in gene background normalization. Defaults to the bundled
-        GRCh38 file.
+        GRCh38 file. Only used when norm_method='gene'.
     no_alt_contigs : bool
-        Disable alt-contig gene normalization. Use when your reference
-        contains only primary chromosome sequences.
+        Disable alt-contig normalization. When norm_method='gene', disables
+        PSL-based alt-contig expansion of gene regions. When norm_method='local',
+        disables extending each VNTR's alt-contig coordinates by norm_window.
     norm_gene_types : list of str
         Gene biotype(s) eligible as the normalization gene when a VNTR has
         no overlapping gene. Default: ["protein_coding"]. Pass ["any"] to
-        allow all biotypes.
+        allow all biotypes. Only used when norm_method='gene'.
+    norm_method : str
+        Normalization strategy. One of:
+          'gene'  (default) — normalize against the host gene region, excluding
+                  VNTR reads from the gene background. Requires a GTF.
+          'local' — normalize against a fixed-size flanking window around each
+                  VNTR (norm_window bp on each side). No GTF required.
+    norm_window : int
+        Flank size in bp used for local normalization (default: 5000).
+        The background window spans [VNTR_start - norm_window, VNTR_end + norm_window]
+        with VNTR reads excluded. Effective background length = 2 * norm_window.
+        Only used when norm_method='local'.
     output_csv : str, optional
         If provided, write results to this CSV file path in addition to
         returning the DataFrame.
@@ -208,13 +222,13 @@ def count_vntrs(
     pandas.DataFrame
         Wide-format DataFrame with one row per sample.
         Columns: sample, metric, <vntr_1>, <vntr_2>, ...
-        metric = 'predicted_copies' when gtf is supplied and at least one VNTR
-            has a period (repeat unit length) in the BED file, enabling conversion
-            of density ratios to estimated total diploid copy numbers via:
+        metric = 'predicted_copies' when normalization is enabled and at least
+            one VNTR has a period (repeat unit length) in the BED file.
             predicted_copies = density_ratio * 2 * (VNTR_length / period).
             VNTRs without a period produce NA in this mode.
-        metric = 'density_ratio' when gtf is supplied but no VNTRs have a period.
-        metric = 'read_count' when gtf is not supplied.
+        metric = 'density_ratio' when normalization is enabled but no VNTRs
+            have a period.
+        metric = 'read_count' when normalization is disabled.
     """
     if isinstance(input_files, str):
         input_files = [input_files]
@@ -230,15 +244,21 @@ def count_vntrs(
     )
 
     # ------------------------------------------------------------------
+    # Validate norm_method
+    # ------------------------------------------------------------------
+    if norm_method not in ("gene", "local"):
+        sys.exit(f"ERROR: norm_method must be 'gene' or 'local', got '{norm_method}'.")
+
+    # ------------------------------------------------------------------
     # Normalization setup
     # ------------------------------------------------------------------
-    normalize        = gtf is not None
+    normalize        = (norm_method == "local") or (gtf is not None)
     gene_dict        = {}
     gene_to_vntrs    = defaultdict(list)
     gene_eff_len     = {}
     gene_alt_regions = {}
 
-    if normalize:
+    if norm_method == "gene" and normalize:
         if gtf == DEFAULT_GTF:
             print(f"\nUsing bundled GENCODE v38 gene annotation for normalization.")
         print(f"\nParsing GTF: {gtf} ...")
@@ -301,6 +321,11 @@ def count_vntrs(
                 "supply the correct path with psl=<path>."
             )
 
+    elif norm_method == "local":
+        use_alt = not no_alt_contigs
+        print(f"\nUsing local {norm_window:,} bp window normalization "
+              f"({'primary + alt contigs' if use_alt else 'primary chromosome only'}).")
+
     # ------------------------------------------------------------------
     # Per-sample processing
     # ------------------------------------------------------------------
@@ -338,30 +363,51 @@ def count_vntrs(
                     for r in region_list
                 }
 
-                gene_excl_cache = {}
-                for gene_name, vntrs in gene_to_vntrs.items():
-                    g          = norm_regions[gene_name]
-                    gene_reads = get_read_names(
-                        aln, g["chrom"], g["start"], g["end"],
-                        gene_alt_regions.get(gene_name),
-                    )
-                    vntr_union = set().union(*(vntr_read_cache[v["name"]] for v in vntrs))
-                    gene_excl_cache[gene_name] = len(gene_reads - vntr_union)
+                if norm_method == "gene":
+                    gene_excl_cache = {}
+                    for gene_name, vntrs in gene_to_vntrs.items():
+                        g          = norm_regions[gene_name]
+                        gene_reads = get_read_names(
+                            aln, g["chrom"], g["start"], g["end"],
+                            gene_alt_regions.get(gene_name),
+                        )
+                        vntr_union = set().union(*(vntr_read_cache[v["name"]] for v in vntrs))
+                        gene_excl_cache[gene_name] = len(gene_reads - vntr_union)
 
                 values = []
                 for r in region_list:
-                    vntr_count = len(vntr_read_cache[r["name"]])
+                    vntr_reads = vntr_read_cache[r["name"]]
+                    vntr_count = len(vntr_reads)
                     vntr_len   = r["end"] - r["start"]
-                    gene_name  = r["gene"]
 
-                    if gene_name and gene_name in gene_excl_cache:
-                        ratio = density_ratio(
-                            vntr_count, vntr_len,
-                            gene_excl_cache[gene_name],
-                            gene_eff_len[gene_name],
-                        )
-                    else:
-                        ratio = None
+                    if norm_method == "gene":
+                        gene_name = r["gene"]
+                        if gene_name and gene_name in gene_excl_cache:
+                            ratio = density_ratio(
+                                vntr_count, vntr_len,
+                                gene_excl_cache[gene_name],
+                                gene_eff_len[gene_name],
+                            )
+                        else:
+                            ratio = None
+
+                    else:  # local
+                        win_start  = max(0, r["start"] - norm_window)
+                        win_end    = r["end"] + norm_window
+                        win_alts   = None
+                        if use_alt and r["alt_regions"]:
+                            win_alts = [
+                                {
+                                    "chrom": a["chrom"],
+                                    "start": max(0, a["start"] - norm_window),
+                                    "end":   a["end"] + norm_window,
+                                }
+                                for a in r["alt_regions"]
+                            ]
+                        window_reads    = get_read_names(aln, r["chrom"], win_start, win_end, win_alts)
+                        window_excl     = len(window_reads - vntr_reads)
+                        window_eff_len  = 2 * norm_window
+                        ratio = density_ratio(vntr_count, vntr_len, window_excl, window_eff_len)
 
                     if has_period:
                         period = r.get("period")

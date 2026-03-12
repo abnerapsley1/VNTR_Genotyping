@@ -106,6 +106,8 @@ vntr-count -r my_vntrs.bed \
 | `-i FILE [...]` | Input BAM/CRAM/SAM file(s) |
 | `-g / --gtf GTF` | Gene annotation GTF/GTF.gz (default: bundled GENCODE v38) |
 | `--no-gtf` | Disable normalization; return raw read counts |
+| `--norm-method METHOD` | Normalization method: `gene` (default) or `local` |
+| `--norm-window BP` | Flank size for local normalization in bp (default: `5000`) |
 | `-T / --reference FASTA` | Reference FASTA (required for CRAM) |
 | `-o / --output CSV` | Output file (default: `read_counts.csv`) |
 | `--no-alt-contigs` | Disable alt-scaffold normalization |
@@ -164,6 +166,8 @@ print(df)
 | `vntr` | `list[str]` | Filter by VNTR ID |
 | `regions` | `str` | Custom BED file path |
 | `gtf` | `str` or `None` | GTF annotation path (default: bundled GENCODE v38); pass `None` to disable normalization |
+| `norm_method` | `str` | `'gene'` (default) or `'local'` |
+| `norm_window` | `int` | Flank size in bp for local normalization (default: `5000`) |
 | `reference` | `str` | Reference FASTA path |
 | `psl` | `str` | altSeqLiftOverPsl path |
 | `no_alt_contigs` | `bool` | Disable alt-scaffold normalization |
