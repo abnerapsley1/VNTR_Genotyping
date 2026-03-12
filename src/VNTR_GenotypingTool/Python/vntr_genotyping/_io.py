@@ -20,6 +20,7 @@ _DATA_DIR = files("vntr_genotyping") / "data"
 
 DEFAULT_BED = str(_DATA_DIR / "v1_VNTR_Annotations_03_07_2026.bed")
 DEFAULT_PSL = str(_DATA_DIR / "altSeqLiftOverPsl.txt.gz")
+DEFAULT_GTF = str(_DATA_DIR / "gencode.v38.genes.gtf.gz")
 
 
 # ---------------------------------------------------------------------------

@@ -5,12 +5,13 @@ cli.py — Command-line entry point for vntr_genotyping (vntr-count).
 import argparse
 import sys
 
-from ._io import DEFAULT_PSL
+from ._io import DEFAULT_GTF, DEFAULT_PSL
 from ._counting import count_vntrs
 
 _USAGE = """
 Count reads overlapping VNTR regions in SAM/BAM/CRAM files.
-Outputs density ratios (VNTR / gene) when --gtf is provided, otherwise raw read counts.
+Outputs predicted copy numbers by default (bundled GENCODE v38 used for normalization).
+Pass --no-gtf to disable normalization and return raw read counts instead.
 
 Region selection (at least one required):
     --default               Use all VNTRs in the built-in BED file
@@ -22,21 +23,25 @@ Region selection (at least one required):
     --regions can be combined with any other option.
 
 Examples:
-    # All built-in VNTRs
-    vntr-count --default -i s1.cram -g annotation.gtf.gz -T ref.fa -o out.csv
+    # All built-in VNTRs (uses bundled GENCODE v38 automatically)
+    vntr-count --default -i s1.cram -T ref.fa -o out.csv
 
     # Subset by gene
-    vntr-count --gene SLC6A3 BRCA1 -i s1.cram -g annotation.gtf.gz -T ref.fa -o out.csv
+    vntr-count --gene SLC6A3 BRCA1 -i s1.cram -T ref.fa -o out.csv
 
-    # Subset by VNTR name
-    vntr-count --vntr TR30 TR22 -i s1.cram -g annotation.gtf.gz -T ref.fa -o out.csv
+    # Use a custom GTF
+    vntr-count --default -i s1.cram -g my_annotation.gtf.gz -T ref.fa -o out.csv
 
-    # Custom BED only
-    vntr-count -r my_vntrs.bed -i s1.cram -g annotation.gtf.gz -T ref.fa -o out.csv
+    # Raw read counts only (no normalization)
+    vntr-count --default -i s1.cram --no-gtf -T ref.fa -o out.csv
+
+    # Custom BED file
+    vntr-count -r my_vntrs.bed -i s1.cram -T ref.fa -o out.csv
 
 Output:
     CSV with columns: sample, metric, <vntr_1>, <vntr_2>, ...
-    metric = 'density_ratio' when --gtf is supplied, 'read_count' otherwise.
+    metric = 'predicted_copies' when period is known, 'density_ratio' otherwise,
+             or 'read_count' when normalization is disabled.
 """
 
 
@@ -78,8 +83,16 @@ def main():
 
     # --- Optional inputs ---
     parser.add_argument(
-        "-g", "--gtf", default=None, metavar="GTF",
-        help="Gene annotation GTF or GTF.gz (enables density ratio normalization)",
+        "-g", "--gtf", default=DEFAULT_GTF, metavar="GTF",
+        help=(
+            "Gene annotation GTF or GTF.gz for normalization. "
+            "Defaults to the bundled GENCODE v38 gene annotation. "
+            "Use --no-gtf to disable normalization entirely."
+        ),
+    )
+    parser.add_argument(
+        "--no-gtf", action="store_true",
+        help="Disable normalization and return raw read counts instead of predicted copy numbers.",
     )
     parser.add_argument(
         "-o", "--output", default="read_counts.csv", metavar="CSV",
@@ -136,7 +149,7 @@ def main():
         gene=args.gene,
         vntr=args.vntr,
         regions=args.regions,
-        gtf=args.gtf,
+        gtf=None if args.no_gtf else args.gtf,
         reference=args.reference,
         psl=args.psl,
         no_alt_contigs=args.no_alt_contigs,

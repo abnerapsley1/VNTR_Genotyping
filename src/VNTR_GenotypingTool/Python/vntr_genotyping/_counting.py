@@ -10,6 +10,7 @@ from collections import defaultdict
 import pandas as pd
 
 from ._io import (
+    DEFAULT_GTF,
     DEFAULT_PSL,
     build_regions,
     get_sample_name,
@@ -157,7 +158,7 @@ def count_vntrs(
     gene=None,
     vntr=None,
     regions=None,
-    gtf=None,
+    gtf=DEFAULT_GTF,
     reference=None,
     psl=DEFAULT_PSL,
     no_alt_contigs=False,
@@ -179,10 +180,11 @@ def count_vntrs(
         Subset built-in VNTRs to these VNTR name(s).
     regions : str, optional
         Path to a custom BED file (combinable with default/gene/vntr).
-    gtf : str, optional
-        Path to a GTF or GTF.gz annotation file. When provided, density
-        ratios (VNTR read density / gene read density) are returned.
-        Without this, raw read counts are returned.
+    gtf : str or None, optional
+        Path to a GTF or GTF.gz annotation file. Defaults to the bundled
+        GENCODE v38 gene annotation. When provided, predicted copy numbers
+        (or density ratios for VNTRs without a period) are returned.
+        Pass gtf=None to disable normalization and return raw read counts.
     reference : str, optional
         Path to a reference FASTA. Required for CRAM files without an
         embedded reference sequence.
@@ -237,6 +239,8 @@ def count_vntrs(
     gene_alt_regions = {}
 
     if normalize:
+        if gtf == DEFAULT_GTF:
+            print(f"\nUsing bundled GENCODE v38 gene annotation for normalization.")
         print(f"\nParsing GTF: {gtf} ...")
         gene_dict = parse_gtf(gtf)
         print(f"  Loaded {len(gene_dict):,} genes.")

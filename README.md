@@ -50,38 +50,49 @@ devtools::install("src/VNTR_GenotypingTool/R/vntrGenotyping")
 ### Command line
 
 ```bash
-# All built-in VNTRs, with density ratio normalization
+# All built-in VNTRs (bundled GENCODE v38 used automatically)
 vntr-count --default \
     -i sample.cram \
-    -g gencode.v38.annotation.gtf.gz \
     -T hg38.fa \
     -o results.csv
 
 # Subset to VNTRs in specific genes
 vntr-count --gene SLC6A3 MAOA \
     -i sample1.cram sample2.cram \
-    -g gencode.v38.annotation.gtf.gz \
     -T hg38.fa \
     -o results.csv
 
 # Specific VNTR IDs
 vntr-count --vntr TR30 TR22 TR17 \
     -i sample.cram \
-    -g gencode.v38.annotation.gtf.gz \
     -T hg38.fa \
     -o results.csv
 
-# Custom BED file (no GTF — returns raw read counts)
-vntr-count -r my_vntrs.bed \
-    -i sample.bam \
+# Use a custom GTF instead of the bundled one
+vntr-count --default \
+    -i sample.cram \
+    -g my_annotation.gtf.gz \
+    -T hg38.fa \
+    -o results.csv
+
+# Disable normalization — returns raw read counts
+vntr-count --default \
+    -i sample.cram \
+    --no-gtf \
+    -T hg38.fa \
     -o counts.csv
 
-# Custom BED combined with built-in VNTRs
-vntr-count -r my_vntrs.bed --gene SLC6A3 \
-    -i sample.cram \
-    -g annotation.gtf.gz \
+# Custom BED file (bundled GTF still used for normalization if gene column is set)
+vntr-count -r my_vntrs.bed \
+    -i sample.bam \
     -T hg38.fa \
     -o results.csv
+
+# Custom BED without normalization
+vntr-count -r my_vntrs.bed \
+    -i sample.bam \
+    --no-gtf \
+    -o counts.csv
 ```
 
 **Key options:**
@@ -93,7 +104,8 @@ vntr-count -r my_vntrs.bed --gene SLC6A3 \
 | `--vntr ID [...]` | Subset built-in VNTRs by VNTR ID |
 | `-r / --regions BED` | Custom BED file (combinable with above) |
 | `-i FILE [...]` | Input BAM/CRAM/SAM file(s) |
-| `-g / --gtf GTF` | Gene annotation GTF/GTF.gz (enables density ratio) |
+| `-g / --gtf GTF` | Gene annotation GTF/GTF.gz (default: bundled GENCODE v38) |
+| `--no-gtf` | Disable normalization; return raw read counts |
 | `-T / --reference FASTA` | Reference FASTA (required for CRAM) |
 | `-o / --output CSV` | Output file (default: `read_counts.csv`) |
 | `--no-alt-contigs` | Disable alt-scaffold normalization |
@@ -107,11 +119,10 @@ vntr-count -r my_vntrs.bed --gene SLC6A3 \
 ```python
 import vntr_genotyping as vg
 
-# All built-in VNTRs — returns a pandas DataFrame
+# All built-in VNTRs — bundled GENCODE v38 used automatically
 df = vg.count_vntrs(
     "sample.cram",
     default=True,
-    gtf="gencode.v38.annotation.gtf.gz",
     reference="hg38.fa",
 )
 
@@ -119,20 +130,28 @@ df = vg.count_vntrs(
 df = vg.count_vntrs(
     ["sample1.cram", "sample2.cram"],
     gene=["SLC6A3", "MAOA"],
-    gtf="gencode.v38.annotation.gtf.gz",
     reference="hg38.fa",
     output_csv="results.csv",
 )
 
-# Custom BED, raw counts (no GTF)
+# Use a custom GTF instead of the bundled one
+df = vg.count_vntrs(
+    "sample.cram",
+    default=True,
+    gtf="my_annotation.gtf.gz",
+    reference="hg38.fa",
+)
+
+# Disable normalization — raw read counts
 df = vg.count_vntrs(
     "sample.bam",
     regions="my_vntrs.bed",
+    gtf=None,
 )
 
 print(df)
-#    sample         metric    TR30    TR22    TR17
-# 0  sample  density_ratio  1.2341  0.9812  1.0543
+#    sample            metric    TR30    TR22    TR17
+# 0  sample  predicted_copies  20.24   16.13   17.38
 ```
 
 **`count_vntrs()` parameters** mirror the CLI options:
@@ -144,7 +163,7 @@ print(df)
 | `gene` | `list[str]` | Filter by gene name |
 | `vntr` | `list[str]` | Filter by VNTR ID |
 | `regions` | `str` | Custom BED file path |
-| `gtf` | `str` | GTF annotation path |
+| `gtf` | `str` or `None` | GTF annotation path (default: bundled GENCODE v38); pass `None` to disable normalization |
 | `reference` | `str` | Reference FASTA path |
 | `psl` | `str` | altSeqLiftOverPsl path |
 | `no_alt_contigs` | `bool` | Disable alt-scaffold normalization |
@@ -160,11 +179,10 @@ Returns a `pandas.DataFrame` with columns `sample`, `metric`, and one column per
 ```r
 library(vntrGenotyping)
 
-# All built-in VNTRs
+# All built-in VNTRs — bundled GENCODE v38 used automatically
 df <- count_vntrs(
   "sample.cram",
   default   = TRUE,
-  gtf       = "gencode.v38.annotation.gtf.gz",
   reference = "hg38.fa"
 )
 
@@ -172,17 +190,24 @@ df <- count_vntrs(
 df <- count_vntrs(
   c("sample1.cram", "sample2.cram"),
   gene       = c("SLC6A3", "MAOA"),
-  gtf        = "gencode.v38.annotation.gtf.gz",
   reference  = "hg38.fa",
   output_csv = "results.csv"
 )
 
-# Custom BED, raw counts (no GTF)
-df <- count_vntrs("sample.bam", regions = "my_vntrs.bed")
+# Use a custom GTF instead of the bundled one
+df <- count_vntrs(
+  "sample.cram",
+  default   = TRUE,
+  gtf       = "my_annotation.gtf.gz",
+  reference = "hg38.fa"
+)
+
+# Disable normalization — raw read counts
+df <- count_vntrs("sample.bam", regions = "my_vntrs.bed", gtf = NULL)
 
 head(df)
-#     sample        metric    TR30    TR22    TR17
-# 1   sample density_ratio  1.2341  0.9812  1.0543
+#     sample            metric    TR30    TR22    TR17
+# 1   sample  predicted_copies  20.24   16.13   17.38
 ```
 
 The R function accepts the same parameters as the Python API. The returned object is a standard R `data.frame`.
