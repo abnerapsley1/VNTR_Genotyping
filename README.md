@@ -15,8 +15,6 @@ For each VNTR region and each input alignment file, the tool:
 
 The predicted copy number estimates the total number of repeat units across both haplotypes in the sample. A value of `2 × N_ref` (where `N_ref` is the reference copy number) would correspond to average coverage; values above this indicate expansion, values below indicate contraction relative to the reference.
 
-When no GTF annotation is provided, raw read counts are returned instead of predicted copy numbers.
-
 ---
 
 ## Installation
