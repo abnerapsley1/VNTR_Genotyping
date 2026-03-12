@@ -257,6 +257,7 @@ def count_vntrs(
     gene_to_vntrs    = defaultdict(list)
     gene_eff_len     = {}
     gene_alt_regions = {}
+    gene_excl_vntrs  = {}   # all VNTRs overlapping each norm region (by coords)
 
     if norm_method == "gene" and normalize:
         if gtf == DEFAULT_GTF:
@@ -290,11 +291,21 @@ def count_vntrs(
             if r["gene"] and r["gene"] in norm_regions:
                 gene_to_vntrs[r["gene"]].append(r)
 
-        for norm_key, vntrs in gene_to_vntrs.items():
-            g       = norm_regions[norm_key]
-            reg_len = g["end"] - g["start"]
-            vntr_bp = sum(v["end"] - v["start"] for v in vntrs)
-            gene_eff_len[norm_key] = max(reg_len - vntr_bp, 1)
+        for norm_key in gene_to_vntrs:
+            g = norm_regions[norm_key]
+            # All VNTRs (built-in or custom) whose primary coords overlap this region
+            overlapping = [
+                r for r in region_list
+                if r["chrom"] == g["chrom"]
+                and r["start"] < g["end"]
+                and r["end"]   > g["start"]
+            ]
+            gene_excl_vntrs[norm_key] = overlapping
+            excl_bp = sum(
+                min(r["end"], g["end"]) - max(r["start"], g["start"])
+                for r in overlapping
+            )
+            gene_eff_len[norm_key] = max((g["end"] - g["start"]) - excl_bp, 1)
 
         use_alt  = not no_alt_contigs
         psl_path = psl if use_alt else None
@@ -365,14 +376,19 @@ def count_vntrs(
 
                 if norm_method == "gene":
                     gene_excl_cache = {}
-                    for gene_name, vntrs in gene_to_vntrs.items():
-                        g          = norm_regions[gene_name]
+                    for norm_key in gene_to_vntrs:
+                        g          = norm_regions[norm_key]
                         gene_reads = get_read_names(
                             aln, g["chrom"], g["start"], g["end"],
-                            gene_alt_regions.get(gene_name),
+                            gene_alt_regions.get(norm_key),
                         )
-                        vntr_union = set().union(*(vntr_read_cache[v["name"]] for v in vntrs))
-                        gene_excl_cache[gene_name] = len(gene_reads - vntr_union)
+                        # Exclude ALL VNTRs overlapping this region by coordinates,
+                        # not just those whose gene assignment matches norm_key.
+                        # This ensures custom-BED VNTRs never inflate gene backgrounds.
+                        excl_reads = set()
+                        for v in gene_excl_vntrs.get(norm_key, []):
+                            excl_reads |= vntr_read_cache[v["name"]]
+                        gene_excl_cache[norm_key] = len(gene_reads - excl_reads)
 
                 values = []
                 for r in region_list:
@@ -394,6 +410,25 @@ def count_vntrs(
                     else:  # local
                         win_start  = max(0, r["start"] - norm_window)
                         win_end    = r["end"] + norm_window
+
+                        # All other VNTRs (built-in or custom) whose primary coords
+                        # overlap this window — exclude their reads from the background.
+                        win_neighbors = [
+                            other for other in region_list
+                            if other["name"] != r["name"]
+                            and other["chrom"] == r["chrom"]
+                            and other["start"] < win_end
+                            and other["end"]   > win_start
+                        ]
+                        excl_reads = set(vntr_reads)
+                        for other in win_neighbors:
+                            excl_reads |= vntr_read_cache[other["name"]]
+                        # Subtract neighbor bp from effective window length
+                        neighbor_bp = sum(
+                            min(other["end"], win_end) - max(other["start"], win_start)
+                            for other in win_neighbors
+                        )
+
                         win_alts   = None
                         if use_alt and r["alt_regions"]:
                             win_alts = [
@@ -405,8 +440,8 @@ def count_vntrs(
                                 for a in r["alt_regions"]
                             ]
                         window_reads    = get_read_names(aln, r["chrom"], win_start, win_end, win_alts)
-                        window_excl     = len(window_reads - vntr_reads)
-                        window_eff_len  = 2 * norm_window
+                        window_excl     = len(window_reads - excl_reads)
+                        window_eff_len  = max(2 * norm_window - neighbor_bp, 1)
                         ratio = density_ratio(vntr_count, vntr_len, window_excl, window_eff_len)
 
                     if has_period:
