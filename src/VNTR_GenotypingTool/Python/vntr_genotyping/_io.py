@@ -7,6 +7,7 @@ import os
 import re
 import sys
 from collections import defaultdict
+from importlib.resources import files
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -15,16 +16,10 @@ from collections import defaultdict
 # Matches standard primary chromosomes: chr1-22, chrX, chrY, chrM
 _PRIMARY_CHROM_RE = re.compile(r"^chr([0-9]+|[XYM])$")
 
-_PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
-_REPO_ROOT = os.path.normpath(os.path.join(_PACKAGE_DIR, "..", "..", "..", ".."))
+_DATA_DIR = files("vntr_genotyping") / "data"
 
-DEFAULT_BED = os.path.join(
-    _REPO_ROOT, "data", "VNTRAnnotations", "v1_VNTR_Annotations_03_07_2026.bed",
-)
-DEFAULT_PSL = os.path.join(
-    _REPO_ROOT, "data", "ReferenceGenomes",
-    "hg38_GCF_000001405.40", "altSeqLiftOverPsl.txt.gz",
-)
+DEFAULT_BED = str(_DATA_DIR / "v1_VNTR_Annotations_03_07_2026.bed")
+DEFAULT_PSL = str(_DATA_DIR / "altSeqLiftOverPsl.txt.gz")
 
 
 # ---------------------------------------------------------------------------
@@ -112,7 +107,7 @@ def load_default_regions(gene_filter=None, vntr_filter=None):
     if not os.path.exists(DEFAULT_BED):
         sys.exit(
             f"ERROR: Built-in BED file not found at {DEFAULT_BED}. "
-            "Ensure the VNTR annotation file is present in data/VNTRAnnotations/."
+            "The package may be corrupted — try reinstalling with: pip install --force-reinstall vntr-genotyping"
         )
 
     all_regions = parse_regions(DEFAULT_BED)
