@@ -1,0 +1,40 @@
+name: vntr_analysis
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  # Python
+  - python=3.12
+
+  # Data manipulation
+  - pandas
+  - numpy
+  - polars
+
+  # Statistics
+  - scipy
+  - statsmodels
+  - pingouin
+
+  # Machine learning
+  - scikit-learn
+
+  # Visualization
+  - matplotlib
+  - seaborn
+  - plotly
+
+  # Bioinformatics
+  - pysam
+  - cyvcf2
+  - biopython
+
+  # Jupyter
+  - jupyterlab
+  - ipywidgets
+
+  # Utilities
+  - tqdm
+  - pyyaml
+  - pip
