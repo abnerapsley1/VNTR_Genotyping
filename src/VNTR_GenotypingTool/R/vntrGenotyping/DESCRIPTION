@@ -1,0 +1,15 @@
+Package: vntrGenotyping
+Type: Package
+Title: VNTR Read-Count and Density-Ratio Genotyping
+Version: 0.1.0
+Description: R wrapper around the vntr_genotyping Python package. Counts reads
+    overlapping VNTR regions from BAM/CRAM files and returns normalized density
+    ratios or raw read counts as a data frame. Requires reticulate and the
+    vntr_genotyping Python package.
+Imports:
+    reticulate
+Suggests:
+    testthat (>= 3.0.0)
+Encoding: UTF-8
+RoxygenNote: 7.0.0
+License: MIT + file LICENSE

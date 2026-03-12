@@ -1,0 +1,13 @@
+# DAT1 (SLC6A3) VNTR regions - GRCh38
+# Format: chrom	start	end	name	gene_name	[alt_chrom	alt_start	alt_end ...]
+# BED coordinates are 0-based half-open [start, end)
+#
+# gene_name (column 5) identifies the host gene used for read density normalization.
+# When a GTF is provided, gene coordinates are looked up automatically.
+# Alternate contig columns (6-8, 9-11, ...) list equivalent regions on alternate
+# reference sequences. Reads from all contigs are unioned before counting.
+chr5	1393581	1393985	TR30	SLC6A3	chr5_KI270791v1_alt	120023	120427
+chr5	1411740	1411922	TR22	SLC6A3	chr5_KI270791v1_alt	102086	102268
+chr5	1414386	1414518	TR21	SLC6A3	chr5_KI270791v1_alt	96355	99618
+chr5	1422351	1423382	TR17	SLC6A3	chr5_KI270791v1_alt	86389	88514
+chr5	1435679	1436128	TR09	SLC6A3	chr5_KI270791v1_alt	73644	74093

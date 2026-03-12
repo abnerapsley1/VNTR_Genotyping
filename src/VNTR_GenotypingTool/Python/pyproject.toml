@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vntr-genotyping"
+version = "0.1.0"
+description = "VNTR read-count and density-ratio genotyping from BAM/CRAM files"
+requires-python = ">=3.9"
+dependencies = [
+    "pysam>=0.21",
+    "pandas>=1.5",
+]
+
+[project.scripts]
+vntr-count = "vntr_genotyping.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["vntr_genotyping*"]
