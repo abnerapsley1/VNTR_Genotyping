@@ -95,7 +95,7 @@ def parse_regions(bed_file):
 # Region selection and merging
 # ---------------------------------------------------------------------------
 
-def load_default_regions(gene_filter=None, vntr_filter=None):
+def load_default_regions(gene_filter=None, vntr_filter=None, verbose=True):
     """
     Load regions from the bundled default BED file.
 
@@ -128,15 +128,16 @@ def load_default_regions(gene_filter=None, vntr_filter=None):
             unmatched_genes.discard(r["gene"])
             unmatched_vntrs.discard(r["name"])
 
-    for g in sorted(unmatched_genes):
-        print(f"  WARNING: --gene '{g}' did not match any region in the built-in BED.")
-    for v in sorted(unmatched_vntrs):
-        print(f"  WARNING: --vntr '{v}' did not match any region in the built-in BED.")
+    if verbose:
+        for g in sorted(unmatched_genes):
+            print(f"  WARNING: --gene '{g}' did not match any region in the built-in BED.")
+        for v in sorted(unmatched_vntrs):
+            print(f"  WARNING: --vntr '{v}' did not match any region in the built-in BED.")
 
     return selected
 
 
-def merge_regions(default_regions, custom_regions):
+def merge_regions(default_regions, custom_regions, verbose=True):
     """
     Merge default and custom region lists.
 
@@ -154,7 +155,7 @@ def merge_regions(default_regions, custom_regions):
             r["name"] = r["name"] + "_UserSupplied"
         renamed_custom.append(r)
 
-    if collisions:
+    if collisions and verbose:
         print(
             f"\nWARNING: {len(collisions)} VNTR name(s) appear in both the built-in BED "
             "and your custom BED. Custom entries have been renamed with '_UserSupplied':"
@@ -166,7 +167,8 @@ def merge_regions(default_regions, custom_regions):
     return default_regions + renamed_custom
 
 
-def build_regions(default=False, gene_filter=None, vntr_filter=None, regions_file=None):
+def build_regions(default=False, gene_filter=None, vntr_filter=None, regions_file=None,
+                  verbose=True):
     """
     Resolve the final region list from user selection parameters.
 
@@ -174,6 +176,7 @@ def build_regions(default=False, gene_filter=None, vntr_filter=None, regions_fil
     gene_filter:  set/list of gene names (subset of built-in BED)
     vntr_filter:  set/list of VNTR names (subset of built-in BED)
     regions_file: path to a custom BED file (combinable with any of the above)
+    verbose:      if False, suppress progress messages
     """
     if not default and gene_filter is None and vntr_filter is None and not regions_file:
         sys.exit(
@@ -193,16 +196,19 @@ def build_regions(default=False, gene_filter=None, vntr_filter=None, regions_fil
 
     default_regions = []
     if default:
-        default_regions = load_default_regions()
-        print(f"Loaded {len(default_regions)} region(s) from built-in BED (all).")
+        default_regions = load_default_regions(verbose=verbose)
+        if verbose:
+            print(f"Loaded {len(default_regions)} region(s) from built-in BED (all).")
     elif gf is not None or vf is not None:
-        default_regions = load_default_regions(gf, vf)
-        print(f"Selected {len(default_regions)} region(s) from built-in BED.")
+        default_regions = load_default_regions(gf, vf, verbose=verbose)
+        if verbose:
+            print(f"Selected {len(default_regions)} region(s) from built-in BED.")
 
     custom_regions = []
     if regions_file:
         custom_regions = parse_regions(regions_file)
-        print(f"Loaded {len(custom_regions)} region(s) from custom BED: {regions_file}")
+        if verbose:
+            print(f"Loaded {len(custom_regions)} region(s) from custom BED: {regions_file}")
 
     if not default_regions and not custom_regions:
         sys.exit(
@@ -211,8 +217,9 @@ def build_regions(default=False, gene_filter=None, vntr_filter=None, regions_fil
         )
 
     if default_regions and custom_regions:
-        regions = merge_regions(default_regions, custom_regions)
-        print(f"Combined total: {len(regions)} region(s).")
+        regions = merge_regions(default_regions, custom_regions, verbose=verbose)
+        if verbose:
+            print(f"Combined total: {len(regions)} region(s).")
         return regions
 
     return default_regions or custom_regions
@@ -301,7 +308,8 @@ def open_alignment_file(filepath, reference=None):
     kwargs = {}
     if reference:
         kwargs["reference_filename"] = reference
+    mode = "r" if filepath.lower().endswith(".sam") else "rb"
     try:
-        return pysam.AlignmentFile(filepath, "r", **kwargs)
+        return pysam.AlignmentFile(filepath, mode, **kwargs)
     except Exception as exc:
         sys.exit(f"ERROR: Could not open {filepath}: {exc}")

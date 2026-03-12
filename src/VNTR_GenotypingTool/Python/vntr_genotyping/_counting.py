@@ -42,7 +42,7 @@ def _parse_coord_norm(s):
 # Nearest-gene assignment
 # ---------------------------------------------------------------------------
 
-def assign_nearest_genes(regions, gene_dict, allowed_types=None):
+def assign_nearest_genes(regions, gene_dict, allowed_types=None, verbose=True):
     """
     For each region with gene=None, find the nearest eligible gene on the same
     chromosome and assign it in-place.
@@ -84,8 +84,9 @@ def assign_nearest_genes(regions, gene_dict, allowed_types=None):
             candidates.append((dist, -overlap_bp, not is_coding, name))
 
         if not candidates:
-            print(f"  WARNING: {r['name']}: no eligible gene found on {chrom}. "
-                  "Normalization will be skipped (output: NA).")
+            if verbose:
+                print(f"  WARNING: {r['name']}: no eligible gene found on {chrom}. "
+                      "Normalization will be skipped (output: NA).")
             continue
 
         candidates.sort()
@@ -94,7 +95,7 @@ def assign_nearest_genes(regions, gene_dict, allowed_types=None):
         ties = [c for c in candidates
                 if c[0] == best[0] and c[1] == best[1] and c[2] == best[2]
                 and c[3] != best[3]]
-        if ties:
+        if ties and verbose:
             tied_names = [best[3]] + [c[3] for c in ties]
             print(f"  WARNING: {r['name']}: normalization gene tied between "
                   f"{tied_names}. Using '{best[3]}' (alphabetical first).")
@@ -102,8 +103,9 @@ def assign_nearest_genes(regions, gene_dict, allowed_types=None):
         dist_bp   = best[0]
         gene_name = best[3]
         r["gene"] = gene_name
-        label = "overlapping" if dist_bp == 0 else f"nearest eligible (distance {dist_bp:,} bp)"
-        print(f"  {r['name']}: no gene in column 5 — assigned {label} gene '{gene_name}'")
+        if verbose:
+            label = "overlapping" if dist_bp == 0 else f"nearest eligible (distance {dist_bp:,} bp)"
+            print(f"  {r['name']}: no gene in column 5 — assigned {label} gene '{gene_name}'")
 
 
 # ---------------------------------------------------------------------------
@@ -166,6 +168,7 @@ def count_vntrs(
     norm_method="gene",
     norm_window=5000,
     output_csv=None,
+    verbose=None,
 ):
     """
     Count reads overlapping VNTR regions from one or more BAM/CRAM files.
@@ -216,6 +219,10 @@ def count_vntrs(
     output_csv : str, optional
         If provided, write results to this CSV file path in addition to
         returning the DataFrame.
+    verbose : bool or None, optional
+        If True, print progress messages to stdout. If False, suppress all
+        output. If None (default), automatically set to True when output_csv
+        is None (interactive use) and False when output_csv is provided.
 
     Returns
     -------
@@ -233,6 +240,10 @@ def count_vntrs(
     if isinstance(input_files, str):
         input_files = [input_files]
 
+    # When verbose is not explicitly set, suppress output if writing to a file.
+    if verbose is None:
+        verbose = (output_csv is None)
+
     # ------------------------------------------------------------------
     # Build region list
     # ------------------------------------------------------------------
@@ -241,6 +252,7 @@ def count_vntrs(
         gene_filter=gene,
         vntr_filter=vntr,
         regions_file=regions,
+        verbose=verbose,
     )
 
     # ------------------------------------------------------------------
@@ -260,14 +272,16 @@ def count_vntrs(
     gene_excl_vntrs  = {}   # all VNTRs overlapping each norm region (by coords)
 
     if norm_method == "gene" and normalize:
-        if gtf == DEFAULT_GTF:
-            print(f"\nUsing bundled GENCODE v38 gene annotation for normalization.")
-        print(f"\nParsing GTF: {gtf} ...")
+        if verbose:
+            if gtf == DEFAULT_GTF:
+                print(f"\nUsing bundled GENCODE v38 gene annotation for normalization.")
+            print(f"\nParsing GTF: {gtf} ...")
         gene_dict = parse_gtf(gtf)
-        print(f"  Loaded {len(gene_dict):,} genes.")
+        if verbose:
+            print(f"  Loaded {len(gene_dict):,} genes.")
 
         allowed_types = set(norm_gene_types)
-        assign_nearest_genes(region_list, gene_dict, allowed_types)
+        assign_nearest_genes(region_list, gene_dict, allowed_types, verbose=verbose)
 
         norm_regions = {}
         for r in region_list:
@@ -282,7 +296,7 @@ def count_vntrs(
                 }
             elif key in gene_dict:
                 norm_regions[key] = gene_dict[key]
-            else:
+            elif verbose:
                 print(f"  WARNING: Normalization target '{key}' not found in GTF "
                       "and is not a valid coordinate string. "
                       "VNTRs assigned to this target will output NA.")
@@ -311,10 +325,12 @@ def count_vntrs(
         psl_path = psl if use_alt else None
 
         if use_alt and psl_path and os.path.exists(psl_path):
-            print(f"\nParsing PSL for alt-contig gene normalization: {psl_path} ...")
+            if verbose:
+                print(f"\nParsing PSL for alt-contig gene normalization: {psl_path} ...")
             psl_records = parse_psl(psl_path)
-            n_psl = sum(len(v) for v in psl_records.values())
-            print(f"  {n_psl} alignment records across {len(psl_records)} primary chromosomes.")
+            if verbose:
+                n_psl = sum(len(v) for v in psl_records.values())
+                print(f"  {n_psl} alignment records across {len(psl_records)} primary chromosomes.")
             for norm_key in gene_to_vntrs:
                 g    = norm_regions[norm_key]
                 alts = get_alt_coords_for_region(
@@ -322,20 +338,23 @@ def count_vntrs(
                 )
                 if alts:
                     gene_alt_regions[norm_key] = alts
-            print(f"  {len(gene_alt_regions)} of {len(gene_to_vntrs)} normalization "
-                  f"region(s) have alt-contig coordinates.")
+            if verbose:
+                print(f"  {len(gene_alt_regions)} of {len(gene_to_vntrs)} normalization "
+                      f"region(s) have alt-contig coordinates.")
         elif use_alt and psl_path and not os.path.exists(psl_path):
-            print(
-                f"\nWARNING: PSL file not found at {psl_path}. "
-                "Alt-contig gene normalization will be skipped. "
-                "Pass no_alt_contigs=True to suppress this warning, or "
-                "supply the correct path with psl=<path>."
-            )
+            if verbose:
+                print(
+                    f"\nWARNING: PSL file not found at {psl_path}. "
+                    "Alt-contig gene normalization will be skipped. "
+                    "Pass no_alt_contigs=True to suppress this warning, or "
+                    "supply the correct path with psl=<path>."
+                )
 
     elif norm_method == "local":
         use_alt = not no_alt_contigs
-        print(f"\nUsing local {norm_window:,} bp window normalization "
-              f"({'primary + alt contigs' if use_alt else 'primary chromosome only'}).")
+        if verbose:
+            print(f"\nUsing local {norm_window:,} bp window normalization "
+                  f"({'primary + alt contigs' if use_alt else 'primary chromosome only'}).")
 
     # ------------------------------------------------------------------
     # Per-sample processing
@@ -347,12 +366,13 @@ def count_vntrs(
     has_period = normalize and any(r.get("period") for r in region_list)
     if has_period:
         metric_label = "predicted_copies"
-        n_with_period = sum(1 for r in region_list if r.get("period"))
-        n_without = len(region_list) - n_with_period
-        print(f"\nPeriod (repeat unit length) available for {n_with_period} of "
-              f"{len(region_list)} VNTRs — outputting predicted copy numbers.")
-        if n_without:
-            print(f"  {n_without} VNTR(s) without period will output NA.")
+        if verbose:
+            n_with_period = sum(1 for r in region_list if r.get("period"))
+            n_without = len(region_list) - n_with_period
+            print(f"\nPeriod (repeat unit length) available for {n_with_period} of "
+                  f"{len(region_list)} VNTRs — outputting predicted copy numbers.")
+            if n_without:
+                print(f"  {n_without} VNTR(s) without period will output NA.")
     elif normalize:
         metric_label = "density_ratio"
     else:
@@ -362,7 +382,8 @@ def count_vntrs(
 
     for input_file in input_files:
         sample = get_sample_name(input_file)
-        print(f"\nProcessing {sample} ...")
+        if verbose:
+            print(f"\nProcessing {sample} ...")
 
         with open_alignment_file(input_file, reference) as aln:
 
@@ -456,7 +477,8 @@ def count_vntrs(
                         val = ratio
                         display = f"{val:.6f}" if val is not None else "NA"
 
-                    print(f"  {r['name']}: {vntr_count} VNTR reads | {metric_label} = {display}")
+                    if verbose:
+                        print(f"  {r['name']}: {vntr_count} VNTR reads | {metric_label} = {display}")
                     values.append(val)
 
             else:
@@ -465,7 +487,8 @@ def count_vntrs(
                     count = len(get_read_names(
                         aln, r["chrom"], r["start"], r["end"], r["alt_regions"]
                     ))
-                    print(f"  {r['name']}: {count} reads")
+                    if verbose:
+                        print(f"  {r['name']}: {count} reads")
                     values.append(count)
 
         rows.append({"sample": sample, "metric": metric_label, **dict(zip(vntr_names, values))})
@@ -474,6 +497,7 @@ def count_vntrs(
 
     if output_csv is not None:
         df.to_csv(output_csv, index=False)
-        print(f"\nResults written to {output_csv}")
+        if verbose:
+            print(f"\nResults written to {output_csv}")
 
     return df
