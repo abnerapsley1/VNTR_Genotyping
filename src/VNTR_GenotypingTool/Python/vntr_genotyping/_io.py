@@ -34,10 +34,14 @@ DEFAULT_PSL = os.path.join(
 def parse_regions(bed_file):
     """
     Parse a BED file. Returns a list of dicts:
-        {chrom, start, end, name, gene, alt_regions}
+        {chrom, start, end, name, gene, period, alt_regions}
     BED coordinates are 0-based half-open [start, end).
     Column 5 (gene) is optional; set to None if absent or '.'.
-    Columns 6-8, 9-11, ... are alt-contig triplets (chrom, start, end).
+    Column 6 (period) is optional; a positive integer repeat unit length in bp,
+        or None if absent or '.'. Auto-detected: if column 6 is a positive integer
+        it is read as the period and alt-contig triplets start at column 7;
+        otherwise alt-contig triplets start at column 6 (legacy format).
+    Columns 7-9, 10-12, ... (or 6-8, 9-11, ... for legacy) are alt-contig triplets.
     """
     regions = []
     with open(bed_file) as fh:
@@ -52,8 +56,20 @@ def parse_regions(bed_file):
             if gene in (".", "", "NA"):
                 gene = None
 
-            alt_regions = []
+            # Auto-detect period column: if parts[5] is a positive integer, treat
+            # it as the repeat unit length; otherwise fall through to alt-contigs.
+            period = None
             idx = 5
+            if len(parts) > 5:
+                try:
+                    p = int(parts[5])
+                    if p > 0:
+                        period = p
+                        idx = 6   # alt-contigs start at col 7 (0-indexed: 6)
+                except ValueError:
+                    pass          # not an integer — old format, alt-contigs at col 6
+
+            alt_regions = []
             while idx + 2 < len(parts):
                 try:
                     alt_regions.append({
@@ -71,6 +87,7 @@ def parse_regions(bed_file):
                 "end":         int(parts[2]),
                 "name":        parts[3] if len(parts) > 3 else f"{parts[0]}:{parts[1]}-{parts[2]}",
                 "gene":        gene,
+                "period":      period,
                 "alt_regions": alt_regions,
             })
     if not regions:

@@ -206,7 +206,13 @@ def count_vntrs(
     pandas.DataFrame
         Wide-format DataFrame with one row per sample.
         Columns: sample, metric, <vntr_1>, <vntr_2>, ...
-        metric = 'density_ratio' when gtf is supplied, 'read_count' otherwise.
+        metric = 'predicted_copies' when gtf is supplied and at least one VNTR
+            has a period (repeat unit length) in the BED file, enabling conversion
+            of density ratios to estimated total diploid copy numbers via:
+            predicted_copies = density_ratio * 2 * (VNTR_length / period).
+            VNTRs without a period produce NA in this mode.
+        metric = 'density_ratio' when gtf is supplied but no VNTRs have a period.
+        metric = 'read_count' when gtf is not supplied.
     """
     if isinstance(input_files, str):
         input_files = [input_files]
@@ -294,9 +300,25 @@ def count_vntrs(
     # ------------------------------------------------------------------
     # Per-sample processing
     # ------------------------------------------------------------------
-    vntr_names   = [r["name"] for r in region_list]
-    metric_label = "density_ratio" if normalize else "read_count"
-    rows         = []
+    vntr_names = [r["name"] for r in region_list]
+
+    # Determine output metric. When a GTF is provided and at least one VNTR
+    # has a period, convert density ratios to predicted copy numbers.
+    has_period = normalize and any(r.get("period") for r in region_list)
+    if has_period:
+        metric_label = "predicted_copies"
+        n_with_period = sum(1 for r in region_list if r.get("period"))
+        n_without = len(region_list) - n_with_period
+        print(f"\nPeriod (repeat unit length) available for {n_with_period} of "
+              f"{len(region_list)} VNTRs — outputting predicted copy numbers.")
+        if n_without:
+            print(f"  {n_without} VNTR(s) without period will output NA.")
+    elif normalize:
+        metric_label = "density_ratio"
+    else:
+        metric_label = "read_count"
+
+    rows = []
 
     for input_file in input_files:
         sample = get_sample_name(input_file)
@@ -334,12 +356,22 @@ def count_vntrs(
                             gene_excl_cache[gene_name],
                             gene_eff_len[gene_name],
                         )
-                        val = ratio if ratio is not None else None
                     else:
-                        val = None
+                        ratio = None
 
-                    display = f"{val:.6f}" if val is not None else "NA"
-                    print(f"  {r['name']}: {vntr_count} VNTR reads | ratio = {display}")
+                    if has_period:
+                        period = r.get("period")
+                        if ratio is not None and period:
+                            n_ref = vntr_len / period
+                            val   = ratio * 2.0 * n_ref
+                        else:
+                            val = None
+                        display = f"{val:.2f} copies" if val is not None else "NA"
+                    else:
+                        val = ratio
+                        display = f"{val:.6f}" if val is not None else "NA"
+
+                    print(f"  {r['name']}: {vntr_count} VNTR reads | {metric_label} = {display}")
                     values.append(val)
 
             else:

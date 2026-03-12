@@ -1,6 +1,6 @@
 # VNTR Genotyping
 
-A genome-wide tool for quantifying VNTR (Variable Number Tandem Repeat) read coverage from short-read alignment files (BAM/CRAM). Coverage at each VNTR is expressed as a density ratio relative to the host gene, providing a sample-comparable metric that accounts for differences in sequencing depth and regional GC bias.
+A genome-wide tool for quantifying VNTR (Variable Number Tandem Repeat) read coverage from short-read alignment files (BAM/CRAM). Coverage at each VNTR is expressed as a density ratio relative to its host gene, providing a sample-comparable metric that accounts for differences in sequencing depth. In theory, the density ratio metric should correlate linearly with the total number of haplotype-combined VNTR copy numbers, such that the added total of repeat copies across both alleles present in an individual genome should be linearly correlated with the VNTRs density ratio. 
 
 ---
 
@@ -11,10 +11,11 @@ For each VNTR region and each input alignment file, the tool:
 1. Counts the unique reads overlapping the VNTR (primary chromosome + any alt scaffold coordinates).
 2. Counts the unique reads overlapping the host gene region, excluding reads already counted in any VNTR within that gene.
 3. Computes the **density ratio**: `(VNTR reads / VNTR length) / (gene reads / gene length)`
+4. When the repeat unit length (period) is known, converts the density ratio to a **predicted copy number**: `density_ratio × 2 × (VNTR_length / period)`
 
-A ratio of 1.0 indicates average coverage relative to the gene. Values above 1.0 indicate enrichment (more copies); values below 1.0 indicate depletion (fewer copies).
+The predicted copy number estimates the total number of repeat units across both haplotypes in the sample. A value of `2 × N_ref` (where `N_ref` is the reference copy number) would correspond to average coverage; values above this indicate expansion, values below indicate contraction relative to the reference.
 
-When no GTF annotation is provided, raw read counts are returned instead of density ratios.
+When no GTF annotation is provided, raw read counts are returned instead of predicted copy numbers.
 
 ---
 
@@ -215,10 +216,10 @@ Results are returned as a wide-format table with one row per sample:
 
 ## Custom BED file format
 
-Custom BED files follow standard BED format with two optional extensions:
+Custom BED files follow standard BED format with optional extensions:
 
 ```
-chrom  start  end  name  gene  [alt_chrom  alt_start  alt_end  ...]
+chrom  start  end  name  gene  period  [alt_chrom  alt_start  alt_end  ...]
 ```
 
 - **Columns 1–3** (required): chromosome, 0-based start, end.
@@ -226,7 +227,10 @@ chrom  start  end  name  gene  [alt_chrom  alt_start  alt_end  ...]
 - **Column 5** (optional): gene name for normalization, or a coordinate string
   (e.g. `chr5:1318298-1509772`) to use an explicit normalization window.
   Use `.` to leave unspecified; the nearest protein-coding gene will be assigned automatically.
-- **Columns 6–8, 9–11, ...** (optional): alt-contig triplets (`chrom start end`)
+- **Column 6** (optional): repeat unit length in bp (positive integer). When present,
+  the tool converts density ratios to predicted copy numbers. Use `.` if unknown —
+  the tool will still run but will output density ratios for that VNTR.
+- **Columns 7–9, 10–12, ...** (optional): alt-contig triplets (`chrom start end`)
   for including reads aligned to alternate scaffolds.
 
 ---

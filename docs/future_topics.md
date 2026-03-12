@@ -25,6 +25,23 @@ primary-only references.
 
 ---
 
+## Population-average copy number reference from 1000 Genomes
+
+**Context:** The source VNTR annotation data (`copy_number_variable_vntrs_summary.xlsx`) includes
+`mean_combined` — the mean total diploid copy number across 1000 Genomes samples for each VNTR.
+This could be surfaced alongside the predicted copy number output to give users an immediate
+population reference point: how does this sample compare to the 1000 Genomes average?
+
+**What needs to happen:**
+- Add `mean_combined` (and optionally `var_combined`) as additional columns in the annotation BED.
+- In `count_vntrs()` output, include a `pop_mean` column per VNTR so users can compute
+  deviation from population mean directly from the output DataFrame.
+- Consider also outputting a standardised score: `(predicted_copies - pop_mean) / sqrt(var_combined)`.
+- Document clearly that the 1000 Genomes mean is from a specific cohort and may not represent
+  all populations equally.
+
+---
+
 ## Multi-reference support: GRCh38 and CHM13
 
 **Context:** The tool currently assumes GRCh38 (hg38) coordinates in both the built-in BED file (`dat1_regions.bed`) and any user-supplied BED files. CHM13 (T2T-CHM13) is an increasingly used reference that has different chromosome coordinates and contig naming conventions.

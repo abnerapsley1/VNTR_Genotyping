@@ -21,10 +21,13 @@ Usage:
 
 Input file formats:
     XLSX / CSV / TSV  : must have header columns  chrom (or chr), start, end
-    BED (headerless)  : columns 1-3 used as chrom, start, end
+                        optional column cons_len (or period) carries the repeat unit length
+    BED (headerless)  : columns 1-3 used as chrom, start, end; period set to '.'
 
 Output BED columns:
-    chrom  start  end  name  gene_name  [alt_chrom alt_start alt_end ...]
+    chrom  start  end  name  gene_name  period  [alt_chrom alt_start alt_end ...]
+
+    period (column 6): repeat unit length in bp ('.' if unknown).
 
 Coordinates are 0-based half-open [start, end), consistent with BED format.
 """
@@ -49,10 +52,20 @@ _PRIMARY_CHROM_RE = re.compile(r"^chr([0-9]+|[XYM])$")
 # Input loading
 # ---------------------------------------------------------------------------
 
+def _parse_period(value):
+    """Return period as a positive int, or None if missing/invalid."""
+    try:
+        p = int(float(str(value)))
+        return p if p > 0 else None
+    except (ValueError, TypeError):
+        return None
+
+
 def load_vntr_list(path):
     """
     Load VNTR coordinates from XLSX, CSV, TSV, or headerless BED.
-    Returns a list of (chrom, start, end).
+    Returns a list of (chrom, start, end, period) where period is an int
+    or None if the repeat unit length is not available in the source file.
     """
     low = path.lower()
 
@@ -65,7 +78,12 @@ def load_vntr_list(path):
         chrom_col = cols.get("chrom") or cols.get("chr")
         if not chrom_col or "start" not in cols or "end" not in cols:
             sys.exit(f"XLSX must have columns: chrom (or chr), start, end. Found: {list(df.columns)}")
-        return [(str(r[chrom_col]), int(r[cols["start"]]), int(r[cols["end"]])) for _, r in df.iterrows()]
+        period_col = cols.get("cons_len") or cols.get("period")
+        records = []
+        for _, r in df.iterrows():
+            period = _parse_period(r[period_col]) if period_col else None
+            records.append((str(r[chrom_col]), int(r[cols["start"]]), int(r[cols["end"]]), period))
+        return records
 
     # CSV
     if low.endswith(".csv"):
@@ -76,7 +94,12 @@ def load_vntr_list(path):
         chrom_col = cols.get("chrom") or cols.get("chr")
         if not chrom_col or "start" not in cols or "end" not in cols:
             sys.exit(f"CSV must have columns: chrom (or chr), start, end. Found: {list(df.columns)}")
-        return [(str(r[chrom_col]), int(r[cols["start"]]), int(r[cols["end"]])) for _, r in df.iterrows()]
+        period_col = cols.get("cons_len") or cols.get("period")
+        records = []
+        for _, r in df.iterrows():
+            period = _parse_period(r[period_col]) if period_col else None
+            records.append((str(r[chrom_col]), int(r[cols["start"]]), int(r[cols["end"]]), period))
+        return records
 
     # TSV or BED — peek at first non-comment line to detect header
     opener = gzip.open if low.endswith(".gz") else open
@@ -98,21 +121,24 @@ def load_vntr_list(path):
             ei = header.index("end")
         except ValueError:
             sys.exit(f"TSV header must contain chrom/chr, start, end. Found: {first}")
+        pi = next((i for i, h in enumerate(header) if h in ("cons_len", "period")), None)
         records = []
         for line in lines[1:]:
             parts = line.rstrip("\n").split("\t")
             if len(parts) <= max(ci, si, ei):
                 continue
-            records.append((parts[ci], int(parts[si]), int(parts[ei])))
+            period = _parse_period(parts[pi]) if pi is not None and pi < len(parts) else None
+            records.append((parts[ci], int(parts[si]), int(parts[ei]), period))
         return records
     else:
+        # Headerless BED — no period information available
         records = []
         for line in lines:
             parts = line.rstrip("\n").split("\t")
             if len(parts) < 3:
                 continue
             try:
-                records.append((parts[0], int(parts[1]), int(parts[2])))
+                records.append((parts[0], int(parts[1]), int(parts[2]), None))
             except ValueError:
                 continue
         return records
@@ -399,7 +425,7 @@ def main():
     alt_count_dist   = defaultdict(int)
 
     bed_rows = []
-    for chrom, start, end in vntr_coords:
+    for chrom, start, end, period in vntr_coords:
         name = f"{chrom}:{start}-{end}"
 
         # Gene annotation
@@ -429,28 +455,34 @@ def main():
                 n_no_alt += 1
                 alt_count_dist[0] += 1
 
-        bed_rows.append((chrom, start, end, name, gene, alt_cols))
+        bed_rows.append((chrom, start, end, name, gene, period, alt_cols))
 
     # ------------------------------------------------------------------
     # Write output BED
     # ------------------------------------------------------------------
+    n_with_period = sum(1 for *_, p, _ in bed_rows if p is not None)
+
     if args.no_alt_contigs:
         alt_header = "# Alternate contig columns not included (--no-alt-contigs)."
     else:
         alt_header = (
-            "# Alternate contig columns (6-8, 9-11, ...) list equivalent regions on\n"
+            "# Alternate contig columns (7-9, 10-12, ...) list equivalent regions on\n"
             "# alternate reference sequences. Reads from all contigs are unioned before counting."
         )
 
     header_lines = [
         f"# Copy-number-variable VNTR regions - {args.reference}",
         f"# Source: {args.vntr_list}",
-        "# Format: chrom\tstart\tend\tname\tgene_name\t[alt_chrom\talt_start\talt_end ...]",
+        "# Format: chrom\tstart\tend\tname\tgene_name\tperiod\t[alt_chrom\talt_start\talt_end ...]",
         "# BED coordinates are 0-based half-open [start, end)",
         "#",
         "# gene_name (column 5): gene with greatest bp overlap with the VNTR.",
         "#   Priority: 1) most bp overlap  2) protein_coding  3) alphabetical name",
         "#   '.' = no overlapping gene found on primary chromosome.",
+        "#",
+        "# period (column 6): repeat unit length in bp ('.' if unknown).",
+        "#   Used to convert density ratios to predicted copy numbers:",
+        "#   predicted_copies = density_ratio * 2 * (VNTR_length / period)",
         "#",
         alt_header,
     ]
@@ -458,8 +490,9 @@ def main():
     with open(args.out, "w") as fh:
         for line in header_lines:
             fh.write(line + "\n")
-        for chrom, start, end, name, gene, alt_cols in bed_rows:
-            parts = [chrom, str(start), str(end), name, gene] + alt_cols
+        for chrom, start, end, name, gene, period, alt_cols in bed_rows:
+            period_str = str(period) if period is not None else "."
+            parts = [chrom, str(start), str(end), name, gene, period_str] + alt_cols
             fh.write("\t".join(parts) + "\n")
 
     # ------------------------------------------------------------------
@@ -469,6 +502,7 @@ def main():
     print(f"\n{'='*55}")
     print(f"  Reference              : {args.reference}")
     print(f"  Total VNTRs written    : {total:,}")
+    print(f"  With period (cons_len) : {n_with_period:,}  ({100*n_with_period/total:.1f}%)")
     print(f"  No gene overlap        : {n_no_overlap:,}  ({100*n_no_overlap/total:.1f}%)")
     print(f"  Single gene overlap    : {n_single_overlap:,}  ({100*n_single_overlap/total:.1f}%)")
     print(f"  Multi-gene overlap     : {n_multi_overlap:,}  ({100*n_multi_overlap/total:.1f}%)")
