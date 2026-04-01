@@ -25,7 +25,7 @@ Region selection (at least one required):
     -r / --regions FILE     Use a custom BED file (combinable with any of the above)
 
     --default and --gene/--vntr are mutually exclusive.
-    --regions can be combined with any other option.
+    --regions and --chrom can be combined with any other option.
 
 Examples:
     # All built-in VNTRs — gene normalization with bundled GENCODE v38
@@ -39,6 +39,12 @@ Examples:
 
     # Gene normalization with a custom GTF
     vntr-count --default -i s1.cram -g my_annotation.gtf.gz -T ref.fa -o out.csv
+
+    # All VNTRs on chr5 only
+    vntr-count --default -i s1.cram --chrom chr5 -T ref.fa -o out.csv
+
+    # Multiple chromosomes
+    vntr-count --default -i s1.cram --chrom chr5 chr6 chrX -T ref.fa -o out.csv
 
     # Raw read counts only (no normalization)
     vntr-count --default -i s1.cram --no-gtf -T ref.fa -o out.csv
@@ -78,6 +84,15 @@ def main():
     region_group.add_argument(
         "-r", "--regions", metavar="BED",
         help="Custom BED file (combinable with --default / --gene / --vntr)",
+    )
+
+    region_group.add_argument(
+        "--chrom", nargs="+", metavar="CHROM",
+        help=(
+            "Restrict to VNTRs on these chromosome(s) (e.g. --chrom chr5, "
+            "or --chrom chr1 chr2 chrX). Applied after all other region "
+            "selection. Chromosome names must match the BED file (e.g. 'chr5' not '5')."
+        ),
     )
 
     # --- Required inputs ---
@@ -146,6 +161,25 @@ def main():
             "Only used when --norm-method local."
         ),
     )
+    parser.add_argument(
+        "-p", "--workers", type=int, default=1, metavar="N",
+        help=(
+            "Number of parallel workers (default: 1 — fully serial). "
+            "With multiple input files, one process is spawned per sample (up to N). "
+            "With a single input file, N threads are used for parallel VNTR read fetching. "
+            "Pass 0 to use all available CPU cores."
+        ),
+    )
+    parser.add_argument(
+        "-t", "--vntr-workers", type=int, default=None, metavar="N",
+        help=(
+            "Number of threads for parallel VNTR read fetching within each sample "
+            "(default: auto — 1 per process pool worker, or --workers for single-sample runs). "
+            "Set explicitly to run both parallelism strategies at once, e.g. "
+            "-p 4 -t 4 uses 4 sample processes each with 4 VNTR-fetch threads. "
+            "Pass 0 to use all available CPU cores."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -167,12 +201,17 @@ def main():
     # local method implies no GTF
     effective_gtf = None if (args.no_gtf or args.norm_method == "local") else args.gtf
 
+    # 0 is a sentinel for "use all cores"; None means "auto" for vntr_workers
+    workers      = None if args.workers == 0 else args.workers
+    vntr_workers = args.vntr_workers  # None = auto, 0 = all cores, N = explicit
+
     count_vntrs(
         args.input,
         default=args.default,
         gene=args.gene,
         vntr=args.vntr,
         regions=args.regions,
+        chrom=args.chrom,
         gtf=effective_gtf,
         reference=args.reference,
         psl=args.psl,
@@ -181,6 +220,8 @@ def main():
         norm_method=args.norm_method,
         norm_window=args.norm_window,
         output_csv=args.output,
+        workers=workers,
+        vntr_workers=vntr_workers,
     )
 
 
