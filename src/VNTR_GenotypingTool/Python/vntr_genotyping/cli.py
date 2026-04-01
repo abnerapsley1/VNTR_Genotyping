@@ -180,6 +180,14 @@ def main():
             "Pass 0 to use all available CPU cores."
         ),
     )
+    parser.add_argument(
+        "--verbose", action="store_true", default=False,
+        help=(
+            "Print per-VNTR result lines to stdout in addition to the standard "
+            "step headers and progress messages (which always print). "
+            "With many VNTRs this can produce very large output."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -220,6 +228,7 @@ def main():
         norm_method=args.norm_method,
         norm_window=args.norm_window,
         output_csv=args.output,
+        verbose=args.verbose,
         workers=workers,
         vntr_workers=vntr_workers,
     )

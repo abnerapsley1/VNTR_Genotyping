@@ -103,9 +103,8 @@ def assign_nearest_genes(regions, gene_dict, allowed_types=None, verbose=True):
         starts = chrom_starts.get(chrom)
 
         if not genes:
-            if verbose:
-                print(f"  WARNING: {r['name']}: no eligible gene found on {chrom}. "
-                      "Normalization will be skipped (output: NA).")
+            print(f"  WARNING: {r['name']}: no eligible gene found on {chrom}. "
+                  "Normalization will be skipped (output: NA).")
             continue
 
         r_start    = r["start"]
@@ -157,9 +156,8 @@ def assign_nearest_genes(regions, gene_dict, allowed_types=None, verbose=True):
                 candidates.append((dist_left, 0, ends[k][2] != "protein_coding", ends[k][1]))
 
         if not candidates:
-            if verbose:
-                print(f"  WARNING: {r['name']}: no eligible gene found on {chrom}. "
-                      "Normalization will be skipped (output: NA).")
+            print(f"  WARNING: {r['name']}: no eligible gene found on {chrom}. "
+                  "Normalization will be skipped (output: NA).")
             continue
 
         candidates.sort()
@@ -168,7 +166,7 @@ def assign_nearest_genes(regions, gene_dict, allowed_types=None, verbose=True):
         ties = [c for c in candidates
                 if c[0] == best[0] and c[1] == best[1] and c[2] == best[2]
                 and c[3] != best[3]]
-        if ties and verbose:
+        if ties:
             tied_names = [best[3]] + [c[3] for c in ties]
             print(f"  WARNING: {r['name']}: normalization gene tied between "
                   f"{tied_names}. Using '{best[3]}' (alphabetical first).")
@@ -339,13 +337,18 @@ def _process_sample_task(task: dict):
     vntr_names       = shared["vntr_names"]
 
     log = []
-    sample = get_sample_name(input_file)
+    sample       = get_sample_name(input_file)
+    sample_index = task.get("sample_index", "?")
+    n_samples    = shared.get("n_samples", "?")
+    n_vntrs      = len(region_list)
+    prefix       = f"  [{sample_index}/{n_samples}] {sample}"
 
-    if verbose:
-        log.append(f"\nProcessing {sample} ...")
+    log.append(f"\n{prefix}")
 
     if normalize:
         # ---- Build VNTR read cache ----
+        thread_note = f" ({vntr_threads} threads)" if vntr_threads > 1 else ""
+        log.append(f"    Fetching reads for {n_vntrs:,} VNTR(s){thread_note} ...")
         if vntr_threads > 1:
             vntr_read_cache = _parallel_fetch(
                 _fetch_chunk, input_file, reference, region_list, (), vntr_threads
@@ -362,6 +365,8 @@ def _process_sample_task(task: dict):
         if norm_method == "gene":
             # Gene background reads — one fetch per normalization key; fewer calls
             # than VNTR fetches so kept serial on the main process thread.
+            log.append(f"    Fetching gene background reads for "
+                       f"{len(gene_to_vntrs):,} normalization region(s) ...")
             gene_excl_cache = {}
             with open_alignment_file(input_file, reference) as aln:
                 for norm_key in gene_to_vntrs:
@@ -379,6 +384,9 @@ def _process_sample_task(task: dict):
 
         else:  # local
             # ---- Build window read cache ----
+            thread_note = f" ({vntr_threads} threads)" if vntr_threads > 1 else ""
+            log.append(f"    Fetching {norm_window:,} bp normalization windows "
+                       f"for {n_vntrs:,} VNTR(s){thread_note} ...")
             if vntr_threads > 1:
                 window_read_cache = _parallel_fetch(
                     _fetch_window_chunk, input_file, reference, region_list,
@@ -405,6 +413,7 @@ def _process_sample_task(task: dict):
                         )
 
         # ---- Compute per-VNTR metrics (all from cache — no more I/O) ----
+        log.append(f"    Computing {metric_label} for {n_vntrs:,} VNTR(s) ...")
         values = []
         for r in region_list:
             vntr_reads = vntr_read_cache[r["name"]]
@@ -467,6 +476,7 @@ def _process_sample_task(task: dict):
 
     else:
         # Raw read counts — no normalization
+        log.append(f"    Fetching raw read counts for {n_vntrs:,} VNTR(s) ...")
         values = []
         with open_alignment_file(input_file, reference) as aln:
             for r in region_list:
@@ -559,10 +569,11 @@ def count_vntrs(
     output_csv : str, optional
         If provided, write results to this CSV file path in addition to
         returning the DataFrame.
-    verbose : bool or None, optional
-        If True, print progress messages to stdout. If False, suppress all
-        output. If None (default), automatically set to True when output_csv
-        is None (interactive use) and False when output_csv is provided.
+    verbose : bool, optional
+        If True (default), print per-VNTR result lines to stdout in addition
+        to all step headers and progress messages. If False, suppress only
+        the per-VNTR result lines; all step headers, progress messages,
+        warnings, and the completion summary always print regardless.
     workers : int or None, optional
         Number of parallel workers (default: 1 — fully serial).
         Pass None to use all available CPU cores (os.cpu_count()).
@@ -597,19 +608,46 @@ def count_vntrs(
     if isinstance(input_files, str):
         input_files = [input_files]
 
-    # When verbose is not explicitly set, suppress output if writing to a file.
+    # verbose=None defaults to True (per-VNTR lines shown by default).
     if verbose is None:
-        verbose = (output_csv is None)
+        verbose = True
 
     # ------------------------------------------------------------------
-    # Build region list
+    # Run header
     # ------------------------------------------------------------------
+    n_samples_str = f"{len(input_files)} sample(s)"
+    norm_label    = (
+        "none (raw counts)" if (norm_method == "gene" and gtf is None)
+        else f"gene (GENCODE v38)" if (norm_method == "gene" and gtf == DEFAULT_GTF)
+        else f"gene ({os.path.basename(gtf)})" if norm_method == "gene"
+        else f"local ({norm_window:,} bp window)"
+    )
+    out_label = output_csv if output_csv else "returned as DataFrame"
+    chrom_label = (
+        f"  Chromosome(s): {sorted({chrom} if isinstance(chrom, str) else set(chrom))}\n"
+        if chrom is not None else ""
+    )
+    print(
+        f"\n{'='*50}\n"
+        f"  VNTR Genotyping Tool\n"
+        f"{'='*50}\n"
+        f"  Samples:     {n_samples_str}\n"
+        f"{chrom_label}"
+        f"  Norm method: {norm_label}\n"
+        f"  Output:      {out_label}\n"
+        f"{'='*50}"
+    )
+
+    # ------------------------------------------------------------------
+    # Step 1: Build region list
+    # ------------------------------------------------------------------
+    print(f"\n[Step 1] Loading VNTR regions ...")
     region_list = build_regions(
         default=default,
         gene_filter=gene,
         vntr_filter=vntr,
         regions_file=regions,
-        verbose=verbose,
+        verbose=True,
     )
 
     # ------------------------------------------------------------------
@@ -624,13 +662,14 @@ def count_vntrs(
                 "after filtering. Check that chromosome names match the BED file "
                 "(e.g. 'chr5' not '5')."
             )
-        if verbose:
-            found = sorted({r["chrom"] for r in region_list})
-            missing = sorted(chrom_set - set(found))
-            print(f"Chromosome filter: {len(region_list)} VNTR(s) retained on {found}.")
-            if missing:
-                for c in missing:
-                    print(f"  WARNING: no VNTRs found on '{c}' — skipped.")
+        found = sorted({r["chrom"] for r in region_list})
+        missing = sorted(chrom_set - set(found))
+        print(f"  Chromosome filter: {len(region_list)} VNTR(s) retained on {found}.")
+        if missing:
+            for c in missing:
+                print(f"  WARNING: no VNTRs found on '{c}' — skipped.")
+
+    print(f"  {len(region_list):,} VNTR(s) ready for genotyping.")
 
     # ------------------------------------------------------------------
     # Validate norm_method
@@ -639,7 +678,7 @@ def count_vntrs(
         sys.exit(f"ERROR: norm_method must be 'gene' or 'local', got '{norm_method}'.")
 
     # ------------------------------------------------------------------
-    # Normalization setup
+    # Step 2: Normalization setup
     # ------------------------------------------------------------------
     normalize        = (norm_method == "local") or (gtf is not None)
     gene_dict        = {}
@@ -651,15 +690,16 @@ def count_vntrs(
     use_alt          = False
 
     if norm_method == "gene" and normalize:
-        if verbose:
-            if gtf == DEFAULT_GTF:
-                print(f"\nUsing bundled GENCODE v38 gene annotation for normalization.")
-            print(f"\nParsing GTF: {gtf} ...")
+        gtf_label = "bundled GENCODE v38" if gtf == DEFAULT_GTF else gtf
+        print(f"\n[Step 2] Setting up gene normalization ({gtf_label}) ...")
+        print(f"  Parsing GTF: {gtf} ...")
         gene_dict = parse_gtf(gtf)
-        if verbose:
-            print(f"  Loaded {len(gene_dict):,} genes.")
+        print(f"  Loaded {len(gene_dict):,} genes.")
 
         allowed_types = set(norm_gene_types)
+        n_unassigned = sum(1 for r in region_list if r["gene"] is None)
+        if n_unassigned:
+            print(f"  Assigning normalization genes to {n_unassigned:,} unannotated VNTR(s) ...")
         assign_nearest_genes(region_list, gene_dict, allowed_types, verbose=verbose)
 
         for r in region_list:
@@ -674,7 +714,7 @@ def count_vntrs(
                 }
             elif key in gene_dict:
                 norm_regions[key] = gene_dict[key]
-            elif verbose:
+            else:
                 print(f"  WARNING: Normalization target '{key}' not found in GTF "
                       "and is not a valid coordinate string. "
                       "VNTRs assigned to this target will output NA.")
@@ -683,6 +723,7 @@ def count_vntrs(
             if r["gene"] and r["gene"] in norm_regions:
                 gene_to_vntrs[r["gene"]].append(r)
 
+        print(f"  Building normalization backgrounds for {len(gene_to_vntrs):,} gene(s) ...")
         for norm_key in gene_to_vntrs:
             g = norm_regions[norm_key]
             # All VNTRs (built-in or custom) whose primary coords overlap this region
@@ -703,12 +744,10 @@ def count_vntrs(
         psl_path = psl if use_alt else None
 
         if use_alt and psl_path and os.path.exists(psl_path):
-            if verbose:
-                print(f"\nParsing PSL for alt-contig gene normalization: {psl_path} ...")
+            print(f"  Parsing PSL for alt-contig normalization: {psl_path} ...")
             psl_records = parse_psl(psl_path)
-            if verbose:
-                n_psl = sum(len(v) for v in psl_records.values())
-                print(f"  {n_psl} alignment records across {len(psl_records)} primary chromosomes.")
+            n_psl = sum(len(v) for v in psl_records.values())
+            print(f"  {n_psl:,} alignment records across {len(psl_records)} primary chromosomes.")
             for norm_key in gene_to_vntrs:
                 g    = norm_regions[norm_key]
                 alts = get_alt_coords_for_region(
@@ -716,23 +755,26 @@ def count_vntrs(
                 )
                 if alts:
                     gene_alt_regions[norm_key] = alts
-            if verbose:
-                print(f"  {len(gene_alt_regions)} of {len(gene_to_vntrs)} normalization "
-                      f"region(s) have alt-contig coordinates.")
+            print(f"  {len(gene_alt_regions):,} of {len(gene_to_vntrs):,} normalization "
+                  f"region(s) have alt-contig coordinates.")
         elif use_alt and psl_path and not os.path.exists(psl_path):
-            if verbose:
-                print(
-                    f"\nWARNING: PSL file not found at {psl_path}. "
-                    "Alt-contig gene normalization will be skipped. "
-                    "Pass no_alt_contigs=True to suppress this warning, or "
-                    "supply the correct path with psl=<path>."
-                )
+            print(
+                f"\n  WARNING: PSL file not found at {psl_path}. "
+                "Alt-contig gene normalization will be skipped. "
+                "Pass no_alt_contigs=True to suppress this warning, or "
+                "supply the correct path with psl=<path>."
+            )
 
     elif norm_method == "local":
         use_alt = not no_alt_contigs
-        if verbose:
-            print(f"\nUsing local {norm_window:,} bp window normalization "
-                  f"({'primary + alt contigs' if use_alt else 'primary chromosome only'}).")
+        print(
+            f"\n[Step 2] Setting up local normalization "
+            f"({norm_window:,} bp window, "
+            f"{'primary + alt contigs' if use_alt else 'primary chromosome only'}) ..."
+        )
+
+    else:
+        print(f"\n[Step 2] Normalization disabled — raw read counts will be reported.")
 
     # ------------------------------------------------------------------
     # Per-sample processing
@@ -744,19 +786,19 @@ def count_vntrs(
     has_period = normalize and any(r.get("period") for r in region_list)
     if has_period:
         metric_label = "predicted_copies"
-        if verbose:
-            n_with_period = sum(1 for r in region_list if r.get("period"))
-            n_without = len(region_list) - n_with_period
-            print(f"\nPeriod (repeat unit length) available for {n_with_period} of "
-                  f"{len(region_list)} VNTRs — outputting predicted copy numbers.")
-            if n_without:
-                print(f"  {n_without} VNTR(s) without period will output NA.")
+        n_with_period = sum(1 for r in region_list if r.get("period"))
+        n_without = len(region_list) - n_with_period
+        print(f"  Period available for {n_with_period:,} of {len(region_list):,} "
+              f"VNTRs — outputting predicted copy numbers.")
+        if n_without:
+            print(f"  {n_without:,} VNTR(s) without period will output NA.")
     elif normalize:
         metric_label = "density_ratio"
     else:
         metric_label = "read_count"
 
     # Shared read-only data passed to every worker.
+    n_samples = len(input_files)
     shared_data = {
         "reference":       reference,
         "region_list":     region_list,
@@ -772,10 +814,10 @@ def count_vntrs(
         "has_period":      has_period,
         "metric_label":    metric_label,
         "vntr_names":      vntr_names,
+        "n_samples":       n_samples,
     }
 
     n_sample_workers = os.cpu_count() if workers is None else max(1, int(workers))
-    n_samples = len(input_files)
 
     # Resolve VNTR thread count.
     # vntr_workers=None (auto): use n_sample_workers for single-sample serial runs;
@@ -799,15 +841,21 @@ def count_vntrs(
         # explicitly set, in which case both strategies run simultaneously.
         # ------------------------------------------------------------------
         vntr_threads_in_pool = n_vntr_workers if _vntr_explicit else 1
-        if verbose:
-            print(f"\nDispatching {n_samples} samples across "
-                  f"{min(n_sample_workers, n_samples)} worker process(es)"
-                  + (f", {vntr_threads_in_pool} VNTR thread(s) each ..."
-                     if vntr_threads_in_pool > 1 else " ..."))
+        extra = (f", {vntr_threads_in_pool} VNTR-fetch thread(s) each"
+                 if vntr_threads_in_pool > 1 else "")
+        print(
+            f"\n[Step 3] Processing {n_samples} sample(s) in parallel "
+            f"({min(n_sample_workers, n_samples)} worker process(es){extra}) ..."
+        )
 
         tasks = [
-            {"input_file": f, "vntr_threads": vntr_threads_in_pool, "verbose": verbose}
-            for f in input_files
+            {
+                "input_file":   f,
+                "sample_index": i + 1,
+                "vntr_threads": vntr_threads_in_pool,
+                "verbose":      verbose,
+            }
+            for i, f in enumerate(input_files)
         ]
         with ProcessPoolExecutor(
             max_workers=min(n_sample_workers, n_samples),
@@ -817,9 +865,8 @@ def count_vntrs(
             results = list(pool.map(_process_sample_task, tasks))
 
         for row, log_lines in results:
-            if verbose:
-                for line in log_lines:
-                    print(line)
+            for line in log_lines:
+                print(line)
             rows.append(row)
 
     else:
@@ -832,24 +879,36 @@ def count_vntrs(
             vntr_threads = n_vntr_workers
         else:
             vntr_threads = n_sample_workers if n_samples == 1 else 1
-        for input_file in input_files:
+        thread_note = (f", {vntr_threads} VNTR-fetch thread(s) per sample"
+                       if vntr_threads > 1 else "")
+        print(f"\n[Step 3] Processing {n_samples} sample(s){thread_note} ...")
+        for i, input_file in enumerate(input_files):
             task = {
-                "input_file": input_file,
+                "input_file":   input_file,
+                "sample_index": i + 1,
                 "vntr_threads": vntr_threads,
-                "verbose": verbose,
+                "verbose":      verbose,
                 **shared_data,
             }
             row, log_lines = _process_sample_task(task)
-            if verbose:
-                for line in log_lines:
-                    print(line)
+            for line in log_lines:
+                print(line)
             rows.append(row)
 
+    # ------------------------------------------------------------------
+    # Step 4: Output
+    # ------------------------------------------------------------------
     df = pd.DataFrame(rows, columns=["sample", "metric"] + vntr_names)
 
     if output_csv is not None:
+        print(f"\n[Step 4] Writing results to {output_csv} ...")
         df.to_csv(output_csv, index=False)
-        if verbose:
-            print(f"\nResults written to {output_csv}")
+
+    print(
+        f"\n{'='*50}\n"
+        f"  Done. {n_samples} sample(s) processed successfully.\n"
+        f"  Output: {len(df)} row(s) x {len(df.columns)} column(s).\n"
+        f"{'='*50}\n"
+    )
 
     return df
