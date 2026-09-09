@@ -1,0 +1,77 @@
+# VNTR Absolute Genotyping — pipeline configuration
+# Paths are resolved relative to the repository root unless absolute.
+
+inputs:
+  # Bundled VNTR annotation (the loci to genotype). BED, 0-based half-open.
+  # cols: chrom start end name gene period [alt triplets...]
+  regions_bed: data/VNTRAnnotations/v1_VNTR_Annotations_03_07_2026.bed
+
+  # vamos long-read call set used as ground truth (see README / memory).
+  vamos_vcf: data/1000Genomes/vamosExpanded_v3.0_GRCh38_oriMotifs.vcf
+  # Optional sidecar TSV with the reference annotation (motifs, ref copy number).
+  vamos_tsv: data/1000Genomes/vamosExpanded_v3.0_GRCh38_oriMotifs.tsv
+
+  # Per-locus covariate source files (optional; skipped if missing).
+  mutrate_tsv: data/1000Genomes/mutRate_GRCh38_masterFile.tsv
+  anova_annolen_tsv: data/1000Genomes/anova.annoLen.tsv
+  anova_ed2major_tsv: data/1000Genomes/anova.ed2Major.tsv
+
+  # Manifests you fill in.
+  samples_tsv: src/VNTR_AbsoluteGenotyping/config/samples.tsv
+  references_tsv: src/VNTR_AbsoluteGenotyping/config/references.tsv
+
+outputs:
+  # All pipeline artifacts land here (relative to repo root).
+  root: src/VNTR_AbsoluteGenotyping/work
+  ground_truth_dir: src/VNTR_AbsoluteGenotyping/work/ground_truth
+  covariates_dir: src/VNTR_AbsoluteGenotyping/work/covariates
+  features_dir: src/VNTR_AbsoluteGenotyping/work/features
+  model_dir: src/VNTR_AbsoluteGenotyping/work/model
+  # Scratch for transient region slices; cleared per sample.
+  scratch_dir: src/VNTR_AbsoluteGenotyping/work/scratch
+
+ground_truth:
+  # BED <-> VCF join. "exact": POS == start+1 AND INFO.END == end.
+  # "overlap" fallback used when exact fails, requires reciprocal_overlap >= min.
+  join_mode: exact_then_overlap
+  min_reciprocal_overlap: 0.90
+  # vamos GT is 1-based: allele k -> ALTANNO[k-1]. Do not change unless verified.
+  gt_index_base: 1
+  # Combined length reported only when both haplotypes are called.
+  require_both_haps: true
+
+features:
+  # Flank windows (bp) used as local depth references, each side of the array.
+  flank_windows: [500, 1000, 2000, 5000]
+  # MAPQ tiers at which array/flank depth is measured.
+  mapq_tiers: [0, 1, 20, 60]
+  # Reads with >= this fraction of bases matching the repeat motif k-mer set
+  # are counted as in-repeat reads (IRR).
+  irr_motif_frac: 0.80
+  irr_kmer: 5
+  # Random genomic windows sampled per sample for genome-wide nuisance stats.
+  nuisance_n_windows: 3000
+  nuisance_window_bp: 2000
+  # Pad added around each locus when slicing reads (captures junction reads).
+  slice_pad_bp: 5000
+
+runner:
+  transfer_mode: remote            # remote | download
+  samtools_threads: 4
+  # Per-sample locus-level parallelism.
+  workers: 32
+  # Retry a failed remote slice this many times before marking the locus NA.
+  slice_retries: 3
+  slice_timeout_s: 120
+  # Skip samples whose features/<sample>.parquet already exists.
+  resume: true
+
+model:
+  random_seed: 20260831
+  # Frozen test split.
+  holdout_samples_frac: 0.20       # whole samples held out
+  holdout_loci_frac: 0.20          # whole loci held out (non-overlapping region)
+  # Per-locus calibration needs at least this many called panel samples.
+  min_panel_samples_per_locus: 8
+  # Target space for length: "motif_units" or "bp" or "log1p_units".
+  target: log1p_units

@@ -1,5 +1,13 @@
 # VNTR Genotyping
 
+> **Active work is in [`src/VNTR_AbsoluteGenotyping/`](src/VNTR_AbsoluteGenotyping/) — start at its [`HANDOFF.md`](src/VNTR_AbsoluteGenotyping/HANDOFF.md).**
+> That is a from-scratch pipeline for *absolute* VNTR length estimation with
+> calibrated uncertainty, replacing the density-ratio method described below
+> (which validation showed overestimates copy number ~4.4× for 97% of loci).
+> The rest of this README documents the original density-ratio tool.
+
+---
+
 A genome-wide tool for quantifying VNTR (Variable Number Tandem Repeat) read coverage from short-read alignment files (BAM/CRAM). Coverage at each VNTR is expressed as a density ratio relative to its host gene, providing a sample-comparable metric that accounts for differences in sequencing depth. In theory, the density ratio metric should correlate linearly with the total number of haplotype-combined VNTR copy numbers, such that the added total of repeat copies across both alleles present in an individual genome should be linearly correlated with the VNTRs density ratio. 
 
 ---

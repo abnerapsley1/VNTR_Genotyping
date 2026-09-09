@@ -1,0 +1,27 @@
+# Additive environment for the absolute-genotyping pipeline.
+#   mamba env update -f src/VNTR_AbsoluteGenotyping/environment.yml
+# (extends the existing `vntr_analysis` env; safe to also use standalone)
+name: vntr_analysis
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python>=3.11
+  - numpy
+  - scipy
+  - polars>=1.0
+  - pyarrow                # parquet for pandas interop / external tools
+  - pandas
+  - scikit-learn>=1.4      # HistGradientBoostingRegressor (quantile loss)
+  - joblib
+  - pysam>=0.22            # htslib with libcurl -> remote BAM/CRAM range reads
+  - htslib                 # provides libcurl-enabled htslib for pysam
+  - pyyaml
+  - tqdm
+  - matplotlib
+  - seaborn
+  - pip
+  - pip:
+      # optional GPU-capable boosters; select via  export VNTR_GBM=xgboost|lightgbm
+      - xgboost>=2.0
+      - lightgbm>=4.0

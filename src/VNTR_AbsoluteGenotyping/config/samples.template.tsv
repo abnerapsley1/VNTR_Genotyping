@@ -1,0 +1,20 @@
+# SAMPLE MANIFEST  — one row per short-read sample you want in the panel.
+# Tab-separated. Lines starting with '#' and blank lines are ignored.
+# Fill this in. The pipeline reads BAM/CRAM by REMOTE region-slicing (samtools),
+# so data_url must support HTTP range requests or be an s3:// path.
+#
+# Columns
+# -------
+# sample_id       Your label for the sample. Must be unique. Used in filenames.
+# vamos_column    EXACT column header for this sample in the vamos VCF, e.g.
+#                 'APR-phase1__apr001_hap1/APR-phase1__apr001_hap2'
+#                 (run:  scripts/list_vamos_columns.py  to print all 416).
+# cohort          Free text (HPRC, HGSVC2, 1kGP, ...). For your own grouping.
+# data_url        URL or s3:// URI of the BAM or CRAM.
+# index_url       URL/URI of the .bai/.crai. Leave as '.' to assume
+#                 <data_url>.bai (BAM) or <data_url>.crai (CRAM).
+# align_reference Key into references.tsv naming the FASTA the reads were
+#                 aligned to (required for CRAM; also fixes contig naming).
+# md5             Optional expected md5 of the data file ('.' to skip).
+#
+# sample_id	vamos_column	cohort	data_url	index_url	align_reference	md5

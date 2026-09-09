@@ -7,6 +7,13 @@
 ._*
 
 # =============================================================================
+# VNTR_AbsoluteGenotyping pipeline artifacts (regenerable; large)
+# =============================================================================
+src/VNTR_AbsoluteGenotyping/work/
+src/VNTR_AbsoluteGenotyping/config/samples.tsv
+src/VNTR_AbsoluteGenotyping/config/references.tsv
+
+# =============================================================================
 # Python
 # =============================================================================
 __pycache__/

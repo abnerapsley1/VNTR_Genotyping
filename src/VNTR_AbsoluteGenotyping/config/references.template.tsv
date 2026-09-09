@@ -1,0 +1,19 @@
+# REFERENCE GENOME REGISTRY — referenced by samples.tsv 'align_reference'.
+# Tab-separated. '#' and blank lines ignored.
+#
+# Columns
+# -------
+# ref_key         Short name used in samples.tsv (e.g. GRCh38_1kGP, GRCh38_hprc).
+# fasta_url       URL / s3:// / local path of the reference FASTA (bgzipped ok).
+#                 Needed to decode CRAM. Downloaded once and cached locally.
+# fai_url         URL of the .fai ('.' -> assume <fasta_url>.fai, else built locally).
+# contig_style    'chr'  = contigs named chr1..chrX  (most GRCh38 analysis sets)
+#                 'plain'= contigs named 1..X
+#                 'refseq'= NC_000001.11 style (needs chrom_alias for the BED)
+# build           GRCh38 | CHM13   (pipeline currently assumes GRCh38)
+# notes           Free text.
+#
+# Common 1000G / HPRC short-read alignment reference (chr-named, decoy+HLA):
+#   GRCh38_1kGP	http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/technical/reference/GRCh38_reference_genome/GRCh38_full_analysis_set_plus_decoy_hla.fa	.	chr	GRCh38	1kGP 30x / HPRC short-read standard
+#
+# ref_key	fasta_url	fai_url	contig_style	build	notes
