@@ -1,0 +1,229 @@
+grouping,curve,group,signal,n,share
+core spread (bp),paired-end curve,0,depth_ratio_d20_w2000,4491,0.2366923158005692
+core spread (bp),paired-end curve,0,partial_repeat_frac,3361,0.1771371350268789
+core spread (bp),paired-end curve,0,depth_ratio_d20_w1000,2218,0.11689680615579214
+core spread (bp),paired-end curve,0,n_spanning_norm,2163,0.11399810266680721
+core spread (bp),paired-end curve,0,spanning_tlen_shift,2160,0.11383999156740804
+core spread (bp),paired-end curve,0,irr_count_norm,1649,0.08690840096974807
+core spread (bp),paired-end curve,0,depth_ratio_d20_w5000,1377,0.07257299462422262
+core spread (bp),paired-end curve,0,depth_ratio_d0_w2000,662,0.034889849267418574
+core spread (bp),paired-end curve,0,anchored_irr_count_norm,496,0.026141035100664067
+core spread (bp),paired-end curve,0,depth_ratio_d1_w2000,270,0.014229998945926005
+core spread (bp),paired-end curve,0,(no curve),127,0.006693369874565195
+core spread (bp),paired-end curve,1-24,partial_repeat_frac,5299,0.27621976647206004
+core spread (bp),paired-end curve,1-24,depth_ratio_d20_w1000,2914,0.1518974145120934
+core spread (bp),paired-end curve,1-24,depth_ratio_d20_w2000,2494,0.1300041701417848
+core spread (bp),paired-end curve,1-24,spanning_tlen_shift,2191,0.11420975813177649
+core spread (bp),paired-end curve,1-24,n_spanning_norm,2146,0.11186405337781484
+core spread (bp),paired-end curve,1-24,depth_ratio_d20_w5000,1431,0.07459341117597998
+core spread (bp),paired-end curve,1-24,irr_count_norm,947,0.04936405337781485
+core spread (bp),paired-end curve,1-24,depth_ratio_d0_w2000,837,0.043630108423686406
+core spread (bp),paired-end curve,1-24,anchored_irr_count_norm,495,0.025802752293577983
+core spread (bp),paired-end curve,1-24,depth_ratio_d1_w2000,350,0.018244370308590493
+core spread (bp),paired-end curve,1-24,(no curve),80,0.004170141784820684
+core spread (bp),paired-end curve,100-299,irr_count_norm,1760,0.29906542056074764
+core spread (bp),paired-end curve,100-299,n_spanning_norm,1254,0.2130841121495327
+core spread (bp),paired-end curve,100-299,depth_ratio_d0_w2000,848,0.14409515717926932
+core spread (bp),paired-end curve,100-299,depth_ratio_d20_w1000,509,0.0864910790144435
+core spread (bp),paired-end curve,100-299,depth_ratio_d20_w5000,454,0.07714528462192013
+core spread (bp),paired-end curve,100-299,spanning_tlen_shift,430,0.07306711979609176
+core spread (bp),paired-end curve,100-299,anchored_irr_count_norm,224,0.038062871707731524
+core spread (bp),paired-end curve,100-299,depth_ratio_d20_w2000,148,0.025148683092608325
+core spread (bp),paired-end curve,100-299,partial_repeat_frac,147,0.02497875955819881
+core spread (bp),paired-end curve,100-299,depth_ratio_d1_w2000,89,0.0151231945624469
+core spread (bp),paired-end curve,100-299,(no curve),22,0.003738317757009346
+core spread (bp),paired-end curve,25-99,irr_count_norm,2537,0.24933660933660934
+core spread (bp),paired-end curve,25-99,depth_ratio_d20_w1000,1695,0.1665847665847666
+core spread (bp),paired-end curve,25-99,partial_repeat_frac,1466,0.14407862407862407
+core spread (bp),paired-end curve,25-99,spanning_tlen_shift,1267,0.12452088452088451
+core spread (bp),paired-end curve,25-99,n_spanning_norm,1091,0.10722358722358723
+core spread (bp),paired-end curve,25-99,depth_ratio_d20_w5000,792,0.07783783783783783
+core spread (bp),paired-end curve,25-99,depth_ratio_d0_w2000,519,0.05100737100737101
+core spread (bp),paired-end curve,25-99,depth_ratio_d20_w2000,347,0.0341031941031941
+core spread (bp),paired-end curve,25-99,anchored_irr_count_norm,289,0.028402948402948405
+core spread (bp),paired-end curve,25-99,depth_ratio_d1_w2000,125,0.012285012285012284
+core spread (bp),paired-end curve,25-99,(no curve),47,0.004619164619164619
+core spread (bp),paired-end curve,300-999,depth_ratio_d0_w2000,1508,0.35802469135802467
+core spread (bp),paired-end curve,300-999,n_spanning_norm,716,0.16999050332383667
+core spread (bp),paired-end curve,300-999,irr_count_norm,615,0.146011396011396
+core spread (bp),paired-end curve,300-999,depth_ratio_d20_w5000,397,0.09425451092117759
+core spread (bp),paired-end curve,300-999,anchored_irr_count_norm,325,0.07716049382716049
+core spread (bp),paired-end curve,300-999,depth_ratio_d20_w1000,195,0.046296296296296294
+core spread (bp),paired-end curve,300-999,spanning_tlen_shift,154,0.0365622032288699
+core spread (bp),paired-end curve,300-999,depth_ratio_d1_w2000,103,0.024453941120607788
+core spread (bp),paired-end curve,300-999,partial_repeat_frac,98,0.023266856600189935
+core spread (bp),paired-end curve,300-999,depth_ratio_d20_w2000,81,0.019230769230769232
+core spread (bp),paired-end curve,300-999,(no curve),20,0.004748338081671415
+core spread (bp),paired-end curve,>=1000,depth_ratio_d0_w2000,1188,0.5843580914904083
+core spread (bp),paired-end curve,>=1000,irr_count_norm,189,0.09296606000983768
+core spread (bp),paired-end curve,>=1000,anchored_irr_count_norm,179,0.08804722085587802
+core spread (bp),paired-end curve,>=1000,depth_ratio_d20_w5000,172,0.08460403344810624
+core spread (bp),paired-end curve,>=1000,n_spanning_norm,94,0.046237088047220855
+core spread (bp),paired-end curve,>=1000,spanning_tlen_shift,56,0.027545499262174127
+core spread (bp),paired-end curve,>=1000,depth_ratio_d1_w2000,55,0.02705361534677816
+core spread (bp),paired-end curve,>=1000,depth_ratio_d20_w1000,38,0.018691588785046728
+core spread (bp),paired-end curve,>=1000,partial_repeat_frac,27,0.013280865715691098
+core spread (bp),paired-end curve,>=1000,depth_ratio_d20_w2000,18,0.008853910477127398
+core spread (bp),paired-end curve,>=1000,(no curve),17,0.008362026561731432
+core spread (bp),single-end curve,0,depth_ratio_d20_w2000,4785,0.2521872035416886
+core spread (bp),single-end curve,0,partial_repeat_frac,4665,0.2458627595657215
+core spread (bp),single-end curve,0,depth_ratio_d20_w1000,3333,0.17566143143248655
+core spread (bp),single-end curve,0,depth_ratio_d20_w5000,2413,0.12717402761673868
+core spread (bp),single-end curve,0,irr_count_norm,2147,0.11315484347001159
+core spread (bp),single-end curve,0,depth_ratio_d0_w2000,1055,0.05560240328871087
+core spread (bp),single-end curve,0,depth_ratio_d1_w2000,449,0.023663961210076946
+core spread (bp),single-end curve,0,(no curve),127,0.006693369874565195
+core spread (bp),single-end curve,1-24,partial_repeat_frac,6707,0.3496142618849041
+core spread (bp),single-end curve,1-24,depth_ratio_d20_w1000,3949,0.205848623853211
+core spread (bp),single-end curve,1-24,depth_ratio_d20_w2000,2757,0.1437135112593828
+core spread (bp),single-end curve,1-24,depth_ratio_d20_w5000,2457,0.12807547956630524
+core spread (bp),single-end curve,1-24,irr_count_norm,1416,0.07381150959132611
+core spread (bp),single-end curve,1-24,depth_ratio_d0_w2000,1274,0.0664095079232694
+core spread (bp),single-end curve,1-24,depth_ratio_d1_w2000,542,0.028252710592160134
+core spread (bp),single-end curve,1-24,(no curve),82,0.004274395329441201
+core spread (bp),single-end curve,100-299,irr_count_norm,2239,0.3804587935429057
+core spread (bp),single-end curve,100-299,depth_ratio_d0_w2000,1374,0.2334749362786746
+core spread (bp),single-end curve,100-299,depth_ratio_d20_w1000,771,0.13101104502973662
+core spread (bp),single-end curve,100-299,depth_ratio_d20_w5000,737,0.1252336448598131
+core spread (bp),single-end curve,100-299,partial_repeat_frac,362,0.06151231945624469
+core spread (bp),single-end curve,100-299,depth_ratio_d20_w2000,242,0.041121495327102804
+core spread (bp),single-end curve,100-299,depth_ratio_d1_w2000,138,0.02344944774851317
+core spread (bp),single-end curve,100-299,(no curve),22,0.003738317757009346
+core spread (bp),single-end curve,25-99,irr_count_norm,3093,0.30398034398034396
+core spread (bp),single-end curve,25-99,depth_ratio_d20_w1000,2231,0.21926289926289927
+core spread (bp),single-end curve,25-99,partial_repeat_frac,1936,0.19027027027027027
+core spread (bp),single-end curve,25-99,depth_ratio_d20_w5000,1323,0.13002457002457002
+core spread (bp),single-end curve,25-99,depth_ratio_d0_w2000,845,0.08304668304668304
+core spread (bp),single-end curve,25-99,depth_ratio_d20_w2000,490,0.04815724815724816
+core spread (bp),single-end curve,25-99,depth_ratio_d1_w2000,210,0.020638820638820637
+core spread (bp),single-end curve,25-99,(no curve),47,0.004619164619164619
+core spread (bp),single-end curve,300-999,depth_ratio_d0_w2000,1823,0.43281101614434947
+core spread (bp),single-end curve,300-999,irr_count_norm,911,0.21628679962013295
+core spread (bp),single-end curve,300-999,depth_ratio_d20_w5000,580,0.13770180436847104
+core spread (bp),single-end curve,300-999,depth_ratio_d20_w1000,309,0.07336182336182336
+core spread (bp),single-end curve,300-999,partial_repeat_frac,259,0.06149097815764482
+core spread (bp),single-end curve,300-999,depth_ratio_d1_w2000,164,0.0389363722697056
+core spread (bp),single-end curve,300-999,depth_ratio_d20_w2000,146,0.03466286799620133
+core spread (bp),single-end curve,300-999,(no curve),20,0.004748338081671415
+core spread (bp),single-end curve,>=1000,depth_ratio_d0_w2000,1281,0.6301032956222331
+core spread (bp),single-end curve,>=1000,irr_count_norm,282,0.13871126414166257
+core spread (bp),single-end curve,>=1000,depth_ratio_d20_w5000,226,0.11116576487948844
+core spread (bp),single-end curve,>=1000,depth_ratio_d20_w1000,71,0.034923757993113626
+core spread (bp),single-end curve,>=1000,depth_ratio_d1_w2000,67,0.03295622233152976
+core spread (bp),single-end curve,>=1000,partial_repeat_frac,55,0.02705361534677816
+core spread (bp),single-end curve,>=1000,depth_ratio_d20_w2000,34,0.016724053123462864
+core spread (bp),single-end curve,>=1000,(no curve),17,0.008362026561731432
+core spread (repeat units),paired-end curve,0,depth_ratio_d20_w2000,6786,0.23531451556973437
+core spread (repeat units),paired-end curve,0,partial_repeat_frac,5175,0.17945072473819265
+core spread (repeat units),paired-end curve,0,n_spanning_norm,3531,0.12244261044455233
+core spread (repeat units),paired-end curve,0,spanning_tlen_shift,3295,0.11425896386711977
+core spread (repeat units),paired-end curve,0,depth_ratio_d20_w1000,3247,0.1125944933767945
+core spread (repeat units),paired-end curve,0,depth_ratio_d20_w5000,2147,0.07445037797350718
+core spread (repeat units),paired-end curve,0,irr_count_norm,2088,0.07240446632914904
+core spread (repeat units),paired-end curve,0,depth_ratio_d0_w2000,1095,0.03797073306054512
+core spread (repeat units),paired-end curve,0,anchored_irr_count_norm,863,0.029925792357306333
+core spread (repeat units),paired-end curve,0,depth_ratio_d1_w2000,432,0.014980234412927387
+core spread (repeat units),paired-end curve,0,(no curve),179,0.006207087870171301
+core spread (repeat units),paired-end curve,1,partial_repeat_frac,2284,0.25198587819947044
+core spread (repeat units),paired-end curve,1,depth_ratio_d20_w1000,1640,0.18093556928508384
+core spread (repeat units),paired-end curve,1,irr_count_norm,1287,0.14199029126213591
+core spread (repeat units),paired-end curve,1,spanning_tlen_shift,964,0.10635481023830538
+core spread (repeat units),paired-end curve,1,n_spanning_norm,958,0.1056928508384819
+core spread (repeat units),paired-end curve,1,depth_ratio_d20_w5000,740,0.08164165931156223
+core spread (repeat units),paired-end curve,1,depth_ratio_d0_w2000,475,0.05240511915269197
+core spread (repeat units),paired-end curve,1,depth_ratio_d20_w2000,253,0.027912621359223302
+core spread (repeat units),paired-end curve,1,anchored_irr_count_norm,247,0.027250661959399822
+core spread (repeat units),paired-end curve,1,depth_ratio_d1_w2000,181,0.01996910856134157
+core spread (repeat units),paired-end curve,1,(no curve),35,0.003861429832303619
+core spread (repeat units),paired-end curve,2-4,partial_repeat_frac,2612,0.19846516222171567
+core spread (repeat units),paired-end curve,2-4,irr_count_norm,2528,0.1920826684902363
+core spread (repeat units),paired-end curve,2-4,depth_ratio_d20_w1000,2191,0.16647671149608692
+core spread (repeat units),paired-end curve,2-4,n_spanning_norm,1426,0.1083504292986855
+core spread (repeat units),paired-end curve,2-4,spanning_tlen_shift,1395,0.10599498518349669
+core spread (repeat units),paired-end curve,2-4,depth_ratio_d20_w5000,1064,0.0808449205987387
+core spread (repeat units),paired-end curve,2-4,depth_ratio_d0_w2000,927,0.07043537725096877
+core spread (repeat units),paired-end curve,2-4,anchored_irr_count_norm,410,0.03115264797507788
+core spread (repeat units),paired-end curve,2-4,depth_ratio_d20_w2000,365,0.027733454904642504
+core spread (repeat units),paired-end curve,2-4,depth_ratio_d1_w2000,198,0.01504444950991566
+core spread (repeat units),paired-end curve,2-4,(no curve),45,0.003419193070435377
+core spread (repeat units),paired-end curve,20-99,depth_ratio_d0_w2000,1269,0.45305248125669406
+core spread (repeat units),paired-end curve,20-99,n_spanning_norm,441,0.15744377008211352
+core spread (repeat units),paired-end curve,20-99,irr_count_norm,321,0.11460192788289897
+core spread (repeat units),paired-end curve,20-99,anchored_irr_count_norm,183,0.06533380935380222
+core spread (repeat units),paired-end curve,20-99,depth_ratio_d20_w5000,183,0.06533380935380222
+core spread (repeat units),paired-end curve,20-99,spanning_tlen_shift,126,0.04498393430917529
+core spread (repeat units),paired-end curve,20-99,depth_ratio_d20_w1000,105,0.03748661192431275
+core spread (repeat units),paired-end curve,20-99,partial_repeat_frac,64,0.02284898250624777
+core spread (repeat units),paired-end curve,20-99,depth_ratio_d1_w2000,55,0.019635844341306677
+core spread (repeat units),paired-end curve,20-99,depth_ratio_d20_w2000,45,0.01606569082470546
+core spread (repeat units),paired-end curve,20-99,(no curve),9,0.0032131381649410924
+core spread (repeat units),paired-end curve,5-19,depth_ratio_d0_w2000,1462,0.24897820163487738
+core spread (repeat units),paired-end curve,5-19,irr_count_norm,1389,0.23654632152588556
+core spread (repeat units),paired-end curve,5-19,n_spanning_norm,1059,0.18034741144414168
+core spread (repeat units),paired-end curve,5-19,spanning_tlen_shift,450,0.07663487738419618
+core spread (repeat units),paired-end curve,5-19,depth_ratio_d20_w5000,432,0.07356948228882834
+core spread (repeat units),paired-end curve,5-19,depth_ratio_d20_w1000,368,0.06267029972752043
+core spread (repeat units),paired-end curve,5-19,partial_repeat_frac,243,0.04138283378746594
+core spread (repeat units),paired-end curve,5-19,anchored_irr_count_norm,215,0.03661444141689373
+core spread (repeat units),paired-end curve,5-19,depth_ratio_d20_w2000,120,0.020435967302452316
+core spread (repeat units),paired-end curve,5-19,depth_ratio_d1_w2000,101,0.017200272479564033
+core spread (repeat units),paired-end curve,5-19,(no curve),33,0.005619891008174387
+core spread (repeat units),paired-end curve,>=100,depth_ratio_d0_w2000,334,0.4594222833562586
+core spread (repeat units),paired-end curve,>=100,anchored_irr_count_norm,90,0.12379642365887207
+core spread (repeat units),paired-end curve,>=100,irr_count_norm,84,0.1155433287482806
+core spread (repeat units),paired-end curve,>=100,depth_ratio_d20_w5000,57,0.07840440165061899
+core spread (repeat units),paired-end curve,>=100,n_spanning_norm,49,0.06740027510316368
+core spread (repeat units),paired-end curve,>=100,spanning_tlen_shift,28,0.03851444291609354
+core spread (repeat units),paired-end curve,>=100,depth_ratio_d1_w2000,25,0.0343878954607978
+core spread (repeat units),paired-end curve,>=100,partial_repeat_frac,20,0.027510316368638238
+core spread (repeat units),paired-end curve,>=100,depth_ratio_d20_w1000,18,0.024759284731774415
+core spread (repeat units),paired-end curve,>=100,(no curve),12,0.016506189821182942
+core spread (repeat units),paired-end curve,>=100,depth_ratio_d20_w2000,10,0.013755158184319119
+core spread (repeat units),single-end curve,0,partial_repeat_frac,7278,0.25237533809556834
+core spread (repeat units),single-end curve,0,depth_ratio_d20_w2000,7218,0.25029474998266177
+core spread (repeat units),single-end curve,0,depth_ratio_d20_w1000,4953,0.1717525487204383
+core spread (repeat units),single-end curve,0,depth_ratio_d20_w5000,3876,0.13440599209376516
+core spread (repeat units),single-end curve,0,irr_count_norm,2841,0.09851584714612664
+core spread (repeat units),single-end curve,0,depth_ratio_d0_w2000,1772,0.06144670226784104
+core spread (repeat units),single-end curve,0,depth_ratio_d1_w2000,720,0.024967057354878978
+core spread (repeat units),single-end curve,0,(no curve),180,0.006241764338719744
+core spread (repeat units),single-end curve,1,partial_repeat_frac,2787,0.3074801412180053
+core spread (repeat units),single-end curve,1,depth_ratio_d20_w1000,2103,0.23201676963812887
+core spread (repeat units),single-end curve,1,irr_count_norm,1590,0.17541924095322153
+core spread (repeat units),single-end curve,1,depth_ratio_d20_w5000,1195,0.13184024713150927
+core spread (repeat units),single-end curve,1,depth_ratio_d0_w2000,686,0.07568402471315093
+core spread (repeat units),single-end curve,1,depth_ratio_d20_w2000,389,0.04291703442188879
+core spread (repeat units),single-end curve,1,depth_ratio_d1_w2000,278,0.030670785525154457
+core spread (repeat units),single-end curve,1,(no curve),36,0.003971756398940865
+core spread (repeat units),single-end curve,2-4,partial_repeat_frac,3230,0.24542208038902819
+core spread (repeat units),single-end curve,2-4,irr_count_norm,3161,0.24017931768102727
+core spread (repeat units),single-end curve,2-4,depth_ratio_d20_w1000,2809,0.21343362966339943
+core spread (repeat units),single-end curve,2-4,depth_ratio_d20_w5000,1640,0.12461059190031153
+core spread (repeat units),single-end curve,2-4,depth_ratio_d0_w2000,1426,0.1083504292986855
+core spread (repeat units),single-end curve,2-4,depth_ratio_d20_w2000,552,0.041942101664007296
+core spread (repeat units),single-end curve,2-4,depth_ratio_d1_w2000,298,0.022642656333105388
+core spread (repeat units),single-end curve,2-4,(no curve),45,0.003419193070435377
+core spread (repeat units),single-end curve,20-99,depth_ratio_d0_w2000,1459,0.5208853980721171
+core spread (repeat units),single-end curve,20-99,irr_count_norm,508,0.18136379864334165
+core spread (repeat units),single-end curve,20-99,depth_ratio_d20_w5000,294,0.10496251338807569
+core spread (repeat units),single-end curve,20-99,depth_ratio_d20_w1000,183,0.06533380935380222
+core spread (repeat units),single-end curve,20-99,partial_repeat_frac,174,0.062120671188861123
+core spread (repeat units),single-end curve,20-99,depth_ratio_d1_w2000,94,0.03355944305605141
+core spread (repeat units),single-end curve,20-99,depth_ratio_d20_w2000,80,0.028561228132809712
+core spread (repeat units),single-end curve,20-99,(no curve),9,0.0032131381649410924
+core spread (repeat units),single-end curve,5-19,depth_ratio_d0_w2000,1922,0.32731607629427795
+core spread (repeat units),single-end curve,5-19,irr_count_norm,1862,0.3170980926430518
+core spread (repeat units),single-end curve,5-19,depth_ratio_d20_w5000,651,0.11086512261580382
+core spread (repeat units),single-end curve,5-19,depth_ratio_d20_w1000,582,0.09911444141689374
+core spread (repeat units),single-end curve,5-19,partial_repeat_frac,477,0.08123297002724796
+core spread (repeat units),single-end curve,5-19,depth_ratio_d20_w2000,194,0.03303814713896458
+core spread (repeat units),single-end curve,5-19,depth_ratio_d1_w2000,151,0.025715258855585833
+core spread (repeat units),single-end curve,5-19,(no curve),33,0.005619891008174387
+core spread (repeat units),single-end curve,>=100,depth_ratio_d0_w2000,387,0.53232462173315
+core spread (repeat units),single-end curve,>=100,irr_count_norm,126,0.1733149931224209
+core spread (repeat units),single-end curve,>=100,depth_ratio_d20_w5000,80,0.11004126547455295
+core spread (repeat units),single-end curve,>=100,partial_repeat_frac,38,0.052269601100412656
+core spread (repeat units),single-end curve,>=100,depth_ratio_d20_w1000,34,0.04676753782668501
+core spread (repeat units),single-end curve,>=100,depth_ratio_d1_w2000,29,0.039889958734525444
+core spread (repeat units),single-end curve,>=100,depth_ratio_d20_w2000,21,0.02888583218707015
+core spread (repeat units),single-end curve,>=100,(no curve),12,0.016506189821182942

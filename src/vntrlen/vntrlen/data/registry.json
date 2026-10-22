@@ -1,0 +1,17 @@
+{
+  "default_reference": "GRCh38_1kGP",
+  "references": {
+    "GRCh38_1kGP": {
+      "description": "GRCh38 full analysis set plus decoy and HLA, as used by the 1000 Genomes NYGC 30x data (and by the shipped models)",
+      "fasta_url": "http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/technical/reference/GRCh38_reference_genome/GRCh38_full_analysis_set_plus_decoy_hla.fa",
+      "fai_url": "http://ftp.1000genomes.ebi.ac.uk/vol1/ftp/technical/reference/GRCh38_reference_genome/GRCh38_full_analysis_set_plus_decoy_hla.fa.fai",
+      "size_gb": 3.2
+    }
+  },
+  "model_bundle": {
+    "name": "vntrlen-shipped-GRCh38",
+    "version": "0.1.0",
+    "url": null,
+    "sha256": null
+  }
+}

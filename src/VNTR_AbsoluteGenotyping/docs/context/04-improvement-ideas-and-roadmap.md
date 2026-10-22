@@ -62,3 +62,16 @@ Once real evaluation exists, compare on the frozen test set against:
 - adVNTR-NN,
 - ExpansionHunter (VNTR mode).
 Either as competitors to beat or components to borrow.
+
+## Deferred: mate rescue for in-repeat reads (noted 2026-10-22)
+
+In-repeat read signals (`irr_count_norm`, `partial_repeat_frac`, `anchored_irr_count_norm`)
+only count reads the aligner placed on the repeat's reference coordinates. Pure-repeat reads
+that were placed at a similar repeat elsewhere (MAPQ 0) or left unmapped are missed, and
+misplaced reads from similar repeats can be counted. Per-repeat calibration absorbs a steady
+misplacement rate, but not one that varies between people (segmental duplications, common motifs).
+
+Proposed: mate rescue, as in ExpansionHunter/GangSTR — when one read of a pair is firmly placed
+in this repeat's unique flank and its partner is pure repeat, count the partner for this repeat
+wherever it was aligned (including unmapped reads). This changes features, so test on a subset of
+repeats (extract, refit, compare test error) before a full re-extraction and retrain.

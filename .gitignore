@@ -62,3 +62,6 @@ src/1000Genomes_Analysis/variable_vntrs.csv
 tools/
 data/Benchmark/
 src/VNTR_Benchmark/work/
+
+# vntrlen model bundles (distributed as downloads, not in git)
+data/vntrlen_bundle/

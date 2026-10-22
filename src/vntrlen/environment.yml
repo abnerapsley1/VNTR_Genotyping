@@ -1,0 +1,15 @@
+name: vntrlen
+channels: [conda-forge, bioconda]
+dependencies:
+  - python=3.12
+  - numpy
+  - polars>=1.0
+  - pysam>=0.21
+  - scipy
+  - scikit-learn
+  - xgboost>=2.0
+  - samtools>=1.17   # FASTQ input: sort/markdup
+  - bwa              # FASTQ input: alignment
+  - pip
+  - pip:
+      - -e .
