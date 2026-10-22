@@ -12,6 +12,9 @@ separate two kinds of generalisation:
     test_novel_both     test          test         both
     val_*               val fold on either axis -> hyper-parameter tuning
 
+Individuals are taken from the manifest and assigned per family
+(config/sample_families.tsv), so relatives always share a fold.
+
 Outputs: work/model/locus_split.parquet, work/model/sample_split.parquet
 """
 
@@ -23,6 +26,7 @@ import hashlib
 import polars as pl
 
 from ..paths import load_config
+from ..run.manifest import load_samples
 
 
 def _bucket(key: str, seed: int) -> float:
@@ -49,14 +53,32 @@ def build(cfg) -> tuple:
     cov = pl.read_parquet(cfg.path("outputs.covariates_dir") / "locus_covariates.parquet")
     loci = cov["locus_id"].to_list()
 
-    feat_dir = cfg.path("outputs.features_dir")
-    sample_ids = sorted(p.stem for p in feat_dir.glob("*.parquet")
-                        if not p.stem.startswith("_"))
-    if not sample_ids:
-        print("WARNING: no features/*.parquet yet — sample split empty until extraction runs")
+    # Individuals come from the manifest, so the split is fixed before extraction.
+    # Folds are drawn per FAMILY (config/sample_families.tsv): relatives share
+    # alleles, and a parent in training with a child in test would inflate test
+    # scores.  Unrelated individuals keep their per-sample fold.
+    sample_ids = sorted(s["sample_id"] for s in load_samples(cfg))
+    fam_path = cfg.path("inputs.samples_tsv").with_name("sample_families.tsv")
+    family = {}
+    if fam_path.exists():
+        for line in fam_path.read_text().splitlines():
+            if line.startswith("#") or line.startswith("sample_id\t") or not line.strip():
+                continue
+            sid, fid = line.split("\t")[:2]
+            family[sid] = fid
+    # 1kGP gives every sample a family code even when no relative is in the
+    # panel; only group by it when >= 2 panel members share it, so unrelated
+    # individuals keep the per-sample fold they had before families were used.
+    n_in_panel = {}
+    for s_ in sample_ids:
+        n_in_panel[family.get(s_, s_)] = n_in_panel.get(family.get(s_, s_), 0) + 1
+    key = {s_: (family[s_] if s_ in family and n_in_panel[family[s_]] > 1 else s_) for s_ in sample_ids}
+    fams = _assign(sorted(set(key.values())), seed + 1, test_s, val_s)
+    fold_of = dict(zip(fams["id"], fams["fold"]))
+    sdf = pl.DataFrame({"sample_id": sample_ids, "family_id": [key[s_] for s_ in sample_ids],
+                        "fold": [fold_of[key[s_]] for s_ in sample_ids]})
 
     ldf = _assign(loci, seed, test_l, val_l).rename({"id": "locus_id"})
-    sdf = _assign(sample_ids, seed + 1, test_s, val_s).rename({"id": "sample_id"})
 
     mdir = cfg.ensure_dir("outputs.model_dir")
     ldf.write_parquet(mdir / "locus_split.parquet")

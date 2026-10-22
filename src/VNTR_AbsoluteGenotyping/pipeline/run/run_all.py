@@ -15,11 +15,12 @@ from __future__ import annotations
 import argparse
 import time
 import traceback
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
 from ..paths import load_config
 from .manifest import load_samples
-from .process_sample import process
+from .process_sample import fetch_local_copy, process
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -48,11 +49,20 @@ def main(argv: list[str] | None = None) -> None:
         pending = pending[: args.limit]
     print(f"{len(samples)} in manifest | {len(pending)} to process")
 
+    # download mode: fetch sample i+1 in the background while sample i extracts
+    prefetch = cfg.get("runner.transfer_mode", "remote") == "download"
+    pool = ThreadPoolExecutor(1) if prefetch else None
+    nxt = pool.submit(fetch_local_copy, cfg, pending[0]) if prefetch and pending else None
+
     for i, s in enumerate(pending, 1):
         sid = s["sample_id"]
         print(f"\n===== [{i}/{len(pending)}] {sid} =====")
         t0 = time.time()
         try:
+            if nxt is not None:
+                fut = nxt
+                nxt = pool.submit(fetch_local_copy, cfg, pending[i]) if i < len(pending) else None
+                fut.result()                  # this sample's local copy is ready
             process(cfg, s)
             status, note = "ok", ""
         except KeyboardInterrupt:
@@ -66,6 +76,8 @@ def main(argv: list[str] | None = None) -> None:
                      f"\t{dt:.0f}\t{note}\n")
         print(f"----- {sid}: {status} ({dt:.0f}s) -----")
 
+    if pool is not None:
+        pool.shutdown(wait=False, cancel_futures=True)
     print(f"\ndone. log: {log_path}")
 
 

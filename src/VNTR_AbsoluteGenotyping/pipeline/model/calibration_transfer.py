@@ -3,8 +3,10 @@ calibration_transfer.py — Phase 2: predict combined length for ANY locus from
 signals + locus covariates, WITHOUT using locus identity.
 
 This is the model that carries a novel user-BED locus (no panel calibration).
-Trained on quadrant == 'train'; the headline metric is quadrant
-'test_novel_locus' (held-out loci, known samples).
+It sees only NOVEL_SAFE_COVARIATES (BED/reference-derivable), never population
+long-read statistics.  Trained on quadrant == 'train'; the headline metric is
+quadrant 'test_novel_locus' (held-out loci, known samples).  Train-row
+predictions are cross-fitted over samples for stacking.
 
 Also fits a simple out-of-distribution score: a locus far (in covariate space)
 from the training loci gets its confidence downgraded downstream.
@@ -27,13 +29,29 @@ from sklearn.neighbors import NearestNeighbors
 from ..paths import load_config
 from ._gbm import expm1_pred, log1p_target, make_regressor
 from .assemble import feature_columns
+from .per_locus_calibration import _sample_cv_fold
 
-# columns that would leak locus identity / panel truth into the transfer model
-_LEAK = {"cov_mean_combined_units", "cov_var_combined_units", "cov_min_combined_units",
-         "cov_max_combined_units", "cov_mean_combined_bp", "cov_var_combined_bp",
-         "cov_panel_cn_range_units", "cov_n_called", "cov_h_exp", "cov_h_obs",
-         "cov_n_distinct_hap_units", "cov_reciprocal_overlap", "cov_matched",
-         "cov_ref_units_est"}
+# Covariates a NOVEL locus (arbitrary user BED, not in the vamos catalogue) can
+# actually have: derivable from the BED + reference sequence/annotation tracks.
+# Everything else in locus_covariates is computed from population long-read
+# allele data (panel length mean/var/range, heterozygosity, allele counts,
+# anova population means, mutRate length/mutation stats) and would leak the
+# answer into the novel-locus path.
+NOVEL_SAFE_COVARIATES = {
+    "cov_period", "cov_array_span_bp", "cov_log_array_span_bp", "cov_ref_units_est",
+    "cov_consensus_gc", "cov_consensus_base_entropy", "cov_consensus_len",
+    "cov_is_segdup", "cov_mr_segdup_identity", "cov_mr_segdup_cnv",
+    "cov_mr_cons_gc", "cov_mr_all_gc", "cov_mr_te_frac_locus", "cov_mr_te_frac_element",
+    "cov_mr_coding", "cov_mr_exon", "cov_mr_transcribed",
+    "cov_mr_dist_to_recomb", "cov_mr_telomere", "cov_mr_size_bp", "cov_mr_period",
+}
+
+
+def novel_safe_features(tbl: pl.DataFrame) -> list[str]:
+    """Read signals + nuis_* + the reference-derivable covariate allowlist."""
+    return [c for c in feature_columns(tbl)
+            if not c.startswith("plc_")
+            and (not c.startswith("cov_") or c in NOVEL_SAFE_COVARIATES)]
 
 
 def _matrix(tbl: pl.DataFrame, cols: list[str]) -> np.ndarray:
@@ -45,21 +63,31 @@ def build(cfg) -> None:
     tbl = pl.read_parquet(mdir / "model_table.parquet")
     seed = int(cfg.get("model.random_seed", 20260831))
 
-    feats = [c for c in feature_columns(tbl) if c not in _LEAK]
-    feats = [c for c in feats if not c.startswith("plc_")]
-    print(f"transfer model: {len(feats)} features, target=log1p(combined_units)")
+    feats = novel_safe_features(tbl)
+    print(f"transfer model: {len(feats)} features (novel-safe), target=log1p(combined_units)")
 
     tr = tbl.filter(pl.col("quadrant") == "train")
     if tr.height < 200:
         raise SystemExit(f"too few training rows ({tr.height}) — need more samples/loci")
 
-    Xtr = _matrix(tr, feats)
-    ytr = log1p_target(tr["combined_units"].to_numpy())
     model = make_regressor(seed=seed)
-    model.fit(Xtr, ytr)
+    model.fit(_matrix(tr, feats), log1p_target(tr["combined_units"].to_numpy()))
+    pred = expm1_pred(model.predict(_matrix(tbl, feats)))
 
-    Xall = _matrix(tbl, feats)
-    pred = expm1_pred(model.predict(Xall))
+    # train rows: out-of-fold over train samples, so the stacked global model
+    # sees transfer_pred as it behaves on an unseen individual
+    k = int(cfg.get("model.stack_cv_folds", 5))
+    cvf = np.array([_sample_cv_fold(s, seed, k) for s in tr["sample_id"].to_list()])
+    tr_idx = np.flatnonzero((tbl["quadrant"] == "train").to_numpy())
+    for f in range(k):
+        held = cvf == f
+        if not held.any() or held.all():
+            continue
+        m = make_regressor(seed=seed)
+        m.fit(_matrix(tr.filter(pl.Series(~held)), feats),
+              log1p_target(tr["combined_units"].to_numpy()[~held]))
+        pred[tr_idx[held]] = expm1_pred(m.predict(_matrix(tr.filter(pl.Series(held)), feats)))
+        print(f"  cross-fit fold {f + 1}/{k} done")
 
     # OOD score: distance to nearest training locus in standardised covariate space
     cov_cols = [c for c in feats if c.startswith("cov_")]
@@ -70,7 +98,8 @@ def build(cfg) -> None:
         transfer_pred=pl.Series(pred),
         transfer_ood=pl.Series(ood))
     out.write_parquet(mdir / "transfer_predictions.parquet")
-    joblib.dump({"model": model, "features": feats, "leak_excluded": sorted(_LEAK)},
+    joblib.dump({"model": model, "features": feats,
+                 "novel_safe_covariates": sorted(NOVEL_SAFE_COVARIATES)},
                 mdir / "transfer_model.joblib")
 
     _metrics(out)

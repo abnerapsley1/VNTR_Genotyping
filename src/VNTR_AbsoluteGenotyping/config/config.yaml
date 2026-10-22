@@ -56,7 +56,17 @@ features:
   slice_pad_bp: 5000
 
 runner:
-  transfer_mode: remote            # remote | download
+  # remote  : per-locus HTTP range slicing (good for a small BED).
+  # download: pull the whole CRAM with parallel ranges, extract locally, delete;
+  #           the next sample downloads while the current one extracts. For the
+  #           dense 60k-locus bundled BED, remote slicing moves MORE bytes than
+  #           the file itself (~300 KB of CRAM slices per locus).
+  transfer_mode: download          # remote | download
+  download_streams: 8              # parallel HTTP ranges per download (EBI resets more above ~8)
+  # Reuse/keep CRAMs here instead of deleting them: test individuals' CRAMs are
+  # needed again by the GangSTR / danbing-tk benchmark.
+  kept_cram_dir: data/Benchmark/cram
+  keep_cram_folds: [test]
   samtools_threads: 4
   # Per-sample locus-level parallelism.
   workers: 32
@@ -69,9 +79,21 @@ runner:
 model:
   random_seed: 20260831
   # Frozen test split.
-  holdout_samples_frac: 0.20       # whole samples held out
-  holdout_loci_frac: 0.20          # whole loci held out (non-overlapping region)
+  holdout_samples_frac: 0.20       # whole samples held out (test)
+  val_samples_frac: 0.10           # whole samples for interval calibration / tuning
+  # Whole loci held out.  Users are expected to query the bundled ~60k loci, so
+  # nearly all loci train (each held-out locus loses its per-locus calibration);
+  # a small slice still measures + calibrates the novel-locus fallback path.
+  holdout_loci_frac: 0.05          # novel-locus test
+  val_loci_frac: 0.03              # novel-locus interval calibration
   # Per-locus calibration needs at least this many called panel samples.
   min_panel_samples_per_locus: 8
   # Target space for length: "motif_units" or "bp" or "log1p_units".
   target: log1p_units
+  # Out-of-fold folds (over train samples) for the plc / transfer predictions
+  # that the global model stacks on.
+  stack_cv_folds: 5
+  # Parallel jobs for per-locus calibration.
+  n_jobs: 16
+  # PASS tier requires (y_hi - y_lo) / max(y_pred, 1) <= this.
+  pass_max_interval_width_rel: 1.0

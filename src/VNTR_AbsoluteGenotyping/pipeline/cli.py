@@ -15,6 +15,8 @@ Commands (usual order):
     transfer         Phase 2: calibration-transfer model (novel loci)
     global           Phase 3: stacked quantile model (shipped predictor)
     per-allele       evaluate the opt-in per-allele estimate
+    haplotypes       per-haplotype lengths: allele catalog + allele-gap evidence
+    haplotypes-snp   per-haplotype lengths + phase from flanking SNP haplotypes (+ spanning reads)
     evaluate         score predictions by quadrant vs naive baseline
     all-model        split -> assemble -> calibrate -> transfer -> global -> per-allele -> evaluate
 """
@@ -34,6 +36,7 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--sample", default=None, help="extract-one: sample_id")
     ap.add_argument("--only", nargs="+", default=None, help="extract: restrict sample_ids")
     ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument("--no-reads", action="store_true", help="haplotypes-snp: skip the spanning-read term")
     args = ap.parse_args(argv)
     c = args.command
     cfgarg = ["--config", args.config] if args.config else []
@@ -80,6 +83,12 @@ def main(argv: list[str] | None = None) -> None:
     elif c == "per-allele":
         from .model.per_allele import main as m
         m(cfgarg)
+    elif c == "haplotypes":
+        from .model.haplotypes import main as m
+        m(cfgarg)
+    elif c == "haplotypes-snp":
+        from .model.haplotypes_snp import main as m
+        m(cfgarg + (["--no-reads"] if args.no_reads else []))
     elif c == "evaluate":
         from .model.evaluate import main as m
         m(cfgarg)

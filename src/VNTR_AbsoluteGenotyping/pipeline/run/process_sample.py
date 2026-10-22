@@ -13,9 +13,11 @@ Nothing large is written to disk; only the small index is cached.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
+import shutil
 import time
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
@@ -28,7 +30,8 @@ from ..features.schema import FEATURE_COLUMNS, STRING_COLUMNS, empty_row, row_fr
 from ..features.signals import extract_locus_signals
 from ..paths import load_config
 from .manifest import load_references, load_samples
-from .remote import ensure_index, ensure_reference, open_alignment, resolve_contig
+from .remote import (ensure_index, ensure_reference, fetch_parallel, open_alignment,
+                     resolve_contig)
 
 # per-worker globals
 _ALN: pysam.AlignmentFile | None = None
@@ -75,6 +78,65 @@ def _chunks(seq, n):
         yield seq[i:i + k]
 
 
+def _md5(path: Path) -> str:
+    h = hashlib.md5()
+    with open(path, "rb") as fh:
+        while buf := fh.read(16 << 20):
+            h.update(buf)
+    return h.hexdigest()
+
+
+def _keep_folds(cfg) -> dict[str, str]:
+    """sample_id -> fold for samples whose CRAM should be kept after extraction."""
+    folds = set(cfg.get("runner.keep_cram_folds", []) or [])
+    split = cfg.path("outputs.model_dir") / "sample_split.parquet"
+    if not folds or not split.exists():
+        return {}
+    df = pl.read_parquet(split).filter(pl.col("fold").is_in(list(folds)))
+    return dict(zip(df["sample_id"], df["fold"]))
+
+
+def fetch_local_copy(cfg, sample: dict) -> dict:
+    """Download mode: return a sample dict pointing at a local, verified copy.
+
+    Reuses a CRAM already kept in runner.kept_cram_dir; otherwise downloads into
+    scratch/_aln and checks it against the manifest MD5 (a corrupted CRAM fails
+    only at the blocks it damages, so it must be caught here).
+    """
+    url = sample["data_url"]
+    idx = sample.get("index_url")
+    if not idx or idx == ".":
+        idx = url + (".crai" if url.lower().endswith(".cram") else ".bai")
+    sid = sample["sample_id"]
+    kept = cfg.path("runner.kept_cram_dir") if cfg.get("runner.kept_cram_dir") else None
+    if kept is not None:
+        k_data = kept / f"{sid}{Path(url).suffix}"
+        k_idx = kept / f"{k_data.name}{Path(idx).suffix}"
+        if k_data.exists() and k_idx.exists():
+            return dict(sample, data_url=str(k_data), index_url=str(k_idx), _kept=True)
+    d = cfg.path("outputs.scratch_dir") / "_aln"
+    data_p = d / f"{sid}{Path(url).suffix}"
+    idx_p = d / f"{data_p.name}{Path(idx).suffix}"
+    n = int(cfg.get("runner.download_streams", 16))
+    fetch_parallel(idx, idx_p, n_streams=1)
+    want = (sample.get("md5") or "").strip()
+    verified = data_p.with_suffix(data_p.suffix + ".md5ok")
+    for attempt in range(3):            # occasional server-side corruption: re-fetch
+        fetch_parallel(url, data_p, n_streams=n)
+        if not want or want == "." or verified.exists():
+            break
+        if _md5(data_p) == want:
+            verified.touch()
+            break
+        # EBI occasionally delivers a few hundred wrong bytes inside one range
+        # (seen on HG02059: 202 bytes in one 64 MB chunk); the MD5 gate catches it
+        data_p.unlink(missing_ok=True)
+        print(f"[{sid}] MD5 mismatch on attempt {attempt + 1}; re-downloading", flush=True)
+    else:
+        raise OSError(f"{sid}: download failed manifest MD5 three times")
+    return dict(sample, data_url=str(data_p), index_url=str(idx_p), _kept=False)
+
+
 def process(cfg, sample: dict) -> Path:
     sid = sample["sample_id"]
     feat_dir = cfg.ensure_dir("outputs.features_dir")
@@ -94,6 +156,13 @@ def process(cfg, sample: dict) -> Path:
         ref_path = str(ensure_reference(r["fasta_url"], r.get("fai_url"), scratch.parent / "_refcache"))
     elif sample["data_url"].lower().endswith(".cram"):
         raise SystemExit(f"[{sid}] CRAM needs align_reference; none in references.tsv for '{ref_key}'")
+
+    local_copy = cfg.get("runner.transfer_mode", "remote") == "download"
+    if local_copy:
+        t_dl = time.time()
+        print(f"[{sid}] downloading alignment (download mode) ...")
+        sample = fetch_local_copy(cfg, sample)
+        print(f"[{sid}]   downloaded in {time.time()-t_dl:.0f}s")
 
     print(f"[{sid}] caching index ...")
     index_path = str(ensure_index(sample["data_url"], sample.get("index_url"), scratch))
@@ -156,9 +225,20 @@ def process(cfg, sample: dict) -> Path:
     print(f"[{sid}] wrote {out_path}  ({df.height:,} loci; {ok:,} extraction_ok; "
           f"{time.time()-t0:.0f}s)")
 
-    # cleanup transient index (keep reference cache for other samples)
+    # cleanup transient index / local alignment (keep reference cache for other samples)
     try:
-        Path(index_path).unlink(missing_ok=True)
+        if not local_copy:
+            Path(index_path).unlink(missing_ok=True)
+        if local_copy and not sample.get("_kept"):
+            if sid in _keep_folds(cfg) and cfg.get("runner.kept_cram_dir"):
+                kept = cfg.ensure_dir("runner.kept_cram_dir")
+                for key in ("data_url", "index_url"):
+                    shutil.move(sample[key], kept / Path(sample[key]).name)
+                print(f"[{sid}] kept CRAM in {kept} ({_keep_folds(cfg)[sid]} fold)")
+            else:
+                Path(sample["data_url"]).unlink(missing_ok=True)
+                Path(sample["index_url"]).unlink(missing_ok=True)
+            Path(sample["data_url"] + ".md5ok").unlink(missing_ok=True)
     except OSError:
         pass
     return out_path

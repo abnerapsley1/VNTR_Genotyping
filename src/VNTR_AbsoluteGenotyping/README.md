@@ -66,9 +66,10 @@ config/references.tsv (you fill: reference FASTA per alignment set)
           |
           v
 [run] run_all.py  (per sample, one at a time):
-        remote-slice the ~60k locus windows + random background windows via samtools
-        -> extract signals  -> features/<sample>.parquet
-        -> discard slices
+        download the CRAM (parallel HTTP ranges; next sample prefetched)
+        or remote-slice per locus (runner.transfer_mode)
+        -> extract signals for ~60k loci + random background windows
+        -> features/<sample>.parquet ; delete the local CRAM
           |
           v
 [model] splits.py -> per_locus_calibration.py -> calibration_transfer.py
@@ -82,7 +83,7 @@ config/references.tsv (you fill: reference FASTA per alignment set)
 
 ## Compute target
 
-NVIDIA box, 2x A100, 32 CPU cores. Feature extraction is CPU-parallel over loci
+32 CPU cores (the 70-sample run used a box with 2x RTX 6000 Ada). Feature extraction is CPU-parallel over loci
 (32 workers). Global residual model + any NN components use GPU.
 
 ## Setup
@@ -110,7 +111,7 @@ python -m pipeline.cli list-vamos > /tmp/vamos_columns.txt   # 416 column header
 $EDITOR config/samples.tsv        # one row per short-read sample
 $EDITOR config/references.tsv     # FASTA per alignment set (CRAM needs this)
 
-# 3. feature extraction — one sample at a time, remote-sliced, index-only on disk
+# 3. feature extraction — one sample at a time (download mode: ~10 min/sample)
 python -m pipeline.cli extract                 # all pending samples
 #   or: python -m pipeline.cli extract-one --sample HG00733
 
@@ -124,8 +125,9 @@ an existing `features/<id>.parquet`).
 
 ## Status
 
-Foundation, ground truth, covariates, feature extraction, runner, and the full
-model chain are built. Ground truth + covariates have been run for real; the
-model chain is validated end-to-end on synthetic data; feature extraction is
-validated on a toy BAM. Pending: a filled manifest + a real extraction run on
-the NVIDIA box. See `PROGRESS.md`.
+Run end-to-end on real data (2026-10-08): 70 short-read samples, 60.5k loci.
+On held-out individuals at bundled loci: mean abs error 1.02 motif units (vs
+1.76 for the panel mean), within-locus r 0.76; on held-out loci: 2.77 units
+(vs 9.40 naive), r 0.59; 90% intervals cover 91%.  Per-allele output is
+effectively combined ÷ 2 — short reads can't separate most alleles.  See
+`HANDOFF.md` §2 and `PROGRESS.md`.

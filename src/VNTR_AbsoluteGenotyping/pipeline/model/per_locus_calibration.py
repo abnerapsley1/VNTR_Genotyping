@@ -8,7 +8,12 @@ observed signal range and robust-linear (Theil-Sen) for extrapolation.  The
 shortlist of normalised depth / IRR signals.
 
 Generalisation axis here is SAMPLES (sample_fold): the locus is known, the
-individual is new.  Novel-locus generalisation is the transfer model's job.
+individual is new.  Novel-locus generalisation is the transfer model's job, so
+only loci in the train locus-fold are calibrated (held-out loci get null).
+
+Train-sample rows get OUT-OF-FOLD predictions (model.stack_cv_folds folds over
+train samples): the global model stacks on plc_pred, and an in-sample curve
+fits the panel almost exactly, which teaches the stacker to copy it.
 
 Outputs:
   work/model/per_locus_calibration.parquet  (per-locus fit params + train stats)
@@ -18,9 +23,12 @@ Outputs:
 from __future__ import annotations
 
 import argparse
+import hashlib
+import warnings
 
 import numpy as np
 import polars as pl
+from joblib import Parallel, delayed
 from scipy.stats import spearmanr, theilslopes
 from sklearn.isotonic import IsotonicRegression
 
@@ -30,6 +38,8 @@ _SIGNAL_SHORTLIST = [
     "depth_ratio_d20_w2000", "depth_ratio_d20_w1000", "depth_ratio_d20_w5000",
     "depth_ratio_d1_w2000", "array_depth_d20_norm",
     "irr_count_norm", "partial_repeat_frac", "n_spanning_norm",
+    # added 2026-10-07: out-of-fold within-locus r 0.685 -> 0.714 on 30 samples
+    "spanning_tlen_shift", "depth_ratio_d0_w2000", "anchored_irr_count_norm",
 ]
 
 
@@ -69,69 +79,127 @@ def _predict_one(params: dict, x: np.ndarray) -> np.ndarray:
     return np.clip(out, 0, None)
 
 
+def _sample_cv_fold(sample_id: str, seed: int, k: int) -> int:
+    h = hashlib.sha1(f"{seed}:cv:{sample_id}".encode()).digest()
+    return int.from_bytes(h[:8], "big") % k
+
+
+def _best_fit(x_cols: dict[str, np.ndarray], y: np.ndarray, min_n: int):
+    """Pick the shortlist signal with the highest |train r|; return (col, params)."""
+    if y.size < min_n:
+        return None
+    best = None
+    for c, x in x_cols.items():
+        params = _fit_one(x, y)
+        if params is None:
+            continue
+        r = params["train_pearson"]
+        score = abs(r) if np.isfinite(r) else -1
+        if best is None or score > best[0]:
+            best = (score, c, params)
+    return None if best is None else best[1:]
+
+
+def _calibrate_locus(lid, sig: dict[str, np.ndarray], y: np.ndarray,
+                     is_tr: np.ndarray, cvf: np.ndarray, k: int, min_n: int):
+    """Fit one locus.  Returns (fit summary, preds, signal per row).
+
+    Non-train-sample rows are predicted by the fit on all train samples; each
+    train-sample row is predicted by a fit that excluded its own CV fold, so
+    the global model never stacks on an in-sample calibration.
+    """
+    pred = np.full(y.size, np.nan)
+    used = np.full(y.size, None, dtype=object)
+    full = _best_fit({c: x[is_tr] for c, x in sig.items()}, y[is_tr], min_n)
+    if full is None:
+        return dict(locus_id=lid, signal=None, n=int(is_tr.sum()), train_pearson=None,
+                    resid_sd=None, lin_slope=None, lin_intercept=None,
+                    x_min=None, x_max=None), pred, used, np.nan
+    col, params = full
+    out = ~is_tr
+    pred[out] = _predict_one(params, sig[col][out])
+    used[out] = col
+    for f in range(k):
+        held = is_tr & (cvf == f)
+        if not held.any():
+            continue
+        fit = is_tr & (cvf != f)
+        sub = _best_fit({c: x[fit] for c, x in sig.items()}, y[fit], min_n)
+        if sub is not None:
+            pred[held] = _predict_one(sub[1], sig[sub[0]][held])
+            used[held] = sub[0]
+    summary = dict(locus_id=lid, signal=col, **{
+        k_: params[k_] for k_ in ("n", "train_pearson", "resid_sd",
+                                  "lin_slope", "lin_intercept", "x_min", "x_max")})
+    return summary, pred, used, params["resid_sd"]
+
+
+def _calibrate_chunk(groups, k, min_n):
+    warnings.filterwarnings("ignore")
+    np.seterr(all="ignore")
+    return [_calibrate_locus(*g, k=k, min_n=min_n) for g in groups]
+
+
 def build(cfg) -> None:
     mdir = cfg.path("outputs.model_dir")
     tbl = pl.read_parquet(mdir / "model_table.parquet")
     min_n = int(cfg.get("model.min_panel_samples_per_locus", 8))
+    k = int(cfg.get("model.stack_cv_folds", 5))
+    seed = int(cfg.get("model.random_seed", 20260831))
+    n_jobs = int(cfg.get("model.n_jobs", 16))
 
     cols_present = [c for c in _SIGNAL_SHORTLIST if c in tbl.columns]
     if not cols_present:
         raise SystemExit("none of the shortlist signal columns are in model_table")
 
-    fits: list[dict] = []
-    preds: list[pl.DataFrame] = []
-    tr_mask = pl.col("sample_fold") == "train"
+    # Only loci in the train locus-fold get a panel calibration: a novel locus
+    # (user BED, or held-out val/test loci) has no panel to calibrate against.
+    keep = ["locus_id", "sample_id", "sample_fold", "locus_fold", "quadrant", "combined_units"]
+    cal = tbl.filter(pl.col("locus_fold") == "train").select(keep + cols_present)
+    cal = cal.with_columns(cvf=pl.col("sample_id").map_elements(
+        lambda s: _sample_cv_fold(s, seed, k), return_dtype=pl.Int64))
 
-    for (lid,), g in tbl.group_by(["locus_id"], maintain_order=True):
-        gtr = g.filter(tr_mask)
-        y_tr = gtr["combined_units"].to_numpy()
-        best = None
-        if gtr.height >= min_n:
-            for c in cols_present:
-                x_tr = gtr[c].to_numpy()
-                params = _fit_one(x_tr, y_tr)
-                if params is None:
-                    continue
-                score = abs(params["train_pearson"]) if np.isfinite(params["train_pearson"]) else -1
-                if best is None or score > best[0]:
-                    best = (score, c, params)
-        if best is None:
-            fits.append(dict(locus_id=lid, signal=None, n=gtr.height, train_pearson=None,
-                             resid_sd=None, lin_slope=None, lin_intercept=None,
-                             x_min=None, x_max=None))
-            preds.append(g.select("locus_id", "sample_id", "sample_fold", "locus_fold",
-                                  "quadrant", "combined_units").with_columns(
-                plc_pred=pl.lit(None, dtype=pl.Float64),
-                plc_signal=pl.lit(None, dtype=pl.Utf8),
-                plc_resid_sd=pl.lit(None, dtype=pl.Float64)))
-            continue
+    groups = []
+    for (lid,), g in cal.group_by(["locus_id"], maintain_order=True):
+        groups.append((lid, {c: g[c].to_numpy().astype(float) for c in cols_present},
+                       g["combined_units"].to_numpy().astype(float),
+                       (g["sample_fold"] == "train").to_numpy(),
+                       g["cvf"].to_numpy()))
+    n_chunks = max(1, n_jobs * 8)
+    chunks = [groups[i::n_chunks] for i in range(n_chunks)]
+    print(f"per-locus calibration: {len(groups):,} train-fold loci, {k}-fold cross-fit, "
+          f"{n_jobs} jobs")
+    results = [r for part in Parallel(n_jobs=n_jobs)(
+        delayed(_calibrate_chunk)(c, k, min_n) for c in chunks) for r in part]
 
-        _, sigcol, params = best
-        x_all = g[sigcol].to_numpy()
-        yhat = _predict_one(params, x_all)
-        fits.append(dict(locus_id=lid, signal=sigcol, **{
-            k: params[k] for k in ("n", "train_pearson", "resid_sd",
-                                   "lin_slope", "lin_intercept", "x_min", "x_max")}))
-        preds.append(g.select("locus_id", "sample_id", "sample_fold", "locus_fold",
-                              "quadrant", "combined_units").with_columns(
-            plc_pred=pl.Series(yhat),
-            plc_signal=pl.lit(sigcol),
-            plc_resid_sd=pl.lit(params["resid_sd"])))
+    by_lid = {g[0]: r for g, r in zip((g for c in chunks for g in c), results)}
+    fits, preds = [], []
+    for (lid,), g in cal.group_by(["locus_id"], maintain_order=True):
+        summary, pred, used, rsd = by_lid[lid]
+        fits.append(summary)
+        preds.append(g.select(keep).with_columns(
+            plc_pred=pl.Series(pred, dtype=pl.Float64),
+            plc_signal=pl.Series([u for u in used], dtype=pl.Utf8),
+            plc_resid_sd=pl.lit(rsd, dtype=pl.Float64)))
 
-    fit_df = pl.DataFrame(fits)
+    fit_df = pl.DataFrame(fits, infer_schema_length=None)
     fit_df.write_parquet(mdir / "per_locus_calibration.parquet")
-    pred_df = pl.concat(preds, how="diagonal_relaxed")
+    # non-train-fold loci: present with null calibration (novel-locus path)
+    rest = tbl.filter(pl.col("locus_fold") != "train").select(keep).with_columns(
+        plc_pred=pl.lit(None, dtype=pl.Float64), plc_signal=pl.lit(None, dtype=pl.Utf8),
+        plc_resid_sd=pl.lit(None, dtype=pl.Float64))
+    pred_df = pl.concat(preds + [rest], how="diagonal_relaxed")
     pred_df.write_parquet(mdir / "plc_predictions.parquet")
 
     n_fit = fit_df.filter(pl.col("signal").is_not_null()).height
-    print(f"per-locus calibration: fit {n_fit:,}/{fit_df.height:,} loci "
+    print(f"per-locus calibration: fit {n_fit:,}/{fit_df.height:,} train-fold loci "
           f"(>= {min_n} train-sample rows)")
     _quick_metrics(pred_df)
     print(f"wrote {mdir/'per_locus_calibration.parquet'}, {mdir/'plc_predictions.parquet'}")
 
 
 def _quick_metrics(pred: pl.DataFrame) -> None:
-    d = pred.filter(pl.col("plc_pred").is_not_null()
+    d = pred.filter(pl.col("plc_pred").is_finite()
                     & pl.col("combined_units").is_not_null())
     for q in ["train", "test_novel_sample", "test_novel_locus", "test_novel_both", "val"]:
         s = d.filter(pl.col("quadrant") == q)

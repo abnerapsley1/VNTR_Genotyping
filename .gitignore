@@ -11,6 +11,7 @@
 # =============================================================================
 src/VNTR_AbsoluteGenotyping/work/
 src/VNTR_AbsoluteGenotyping/config/samples.tsv
+src/VNTR_AbsoluteGenotyping/config/samples.*.bak.tsv
 src/VNTR_AbsoluteGenotyping/config/references.tsv
 
 # =============================================================================
@@ -54,3 +55,10 @@ src/1000Genomes_Analysis/variable_vntrs.csv
 
 # Microsoft Office temporary lock files
 ~$*
+
+# =============================================================================
+# Benchmark against GangSTR / danbing-tk (third-party tools + large inputs)
+# =============================================================================
+tools/
+data/Benchmark/
+src/VNTR_Benchmark/work/

@@ -3,12 +3,17 @@ remote.py — open BAM/CRAM by remote region-slicing, plus reference/index cachi
 
 htslib (via pysam) does HTTP-range / S3 range reads on a remote BAM/CRAM as
 long as an index is available and, for CRAM, a local reference FASTA is given.
-Nothing is fully downloaded except the (small) index and the reference (cached).
+In `runner.transfer_mode: remote` nothing is fully downloaded except the (small)
+index and the reference (cached).  `download` mode instead pulls the whole
+alignment with `fetch_parallel` — cheaper for the dense bundled BED, where
+per-locus slicing re-reads overlapping CRAM slices and moves more bytes than
+the file itself.
 """
 
 from __future__ import annotations
 
 import hashlib
+import http.client
 import os
 import subprocess
 import urllib.request
@@ -42,6 +47,80 @@ def fetch_to_cache(url: str, cache_dir: Path, suffix: str = "") -> Path:
     else:
         urllib.request.urlretrieve(url, tmp)  # noqa: S310 (trusted manifest URLs)
     tmp.rename(dest)
+    return dest
+
+
+def fetch_parallel(url: str, dest: Path, n_streams: int = 16,
+                   retries: int = 30, chunk_bytes: int = 64 << 20) -> Path:
+    """Download `url` to `dest` with parallel HTTP range requests (skip if present).
+
+    Single EBI connections get throttled to ~1 MB/s; many concurrent ranges
+    recover most of the link.  Each chunk is retried independently and its
+    byte count verified; the file is renamed into place only when complete.
+    Finished chunks are logged beside the partial file, so an interrupted
+    download resumes instead of starting over.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+    import time
+
+    if dest.exists() and dest.stat().st_size > 0:
+        return dest
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    for attempt in range(retries):     # the size request can be dropped too
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, method="HEAD"),  # noqa: S310
+                                        timeout=60) as r:
+                size = int(r.headers["Content-Length"])
+            break
+        except (OSError, http.client.HTTPException):
+            if attempt == retries - 1:
+                raise
+            time.sleep(min(120, 10 * (attempt + 1)))
+    tmp = dest.with_suffix(dest.suffix + ".part")
+    done_log = dest.with_suffix(dest.suffix + ".part.done")
+    done: set[int] = set()
+    if tmp.exists() and tmp.stat().st_size == size and done_log.exists():
+        done = {int(x) for x in done_log.read_text().split()}
+    else:
+        with open(tmp, "wb") as fh:
+            fh.truncate(size)
+        done_log.write_text("")
+    lock = threading.Lock()
+
+    def _get(rng: tuple[int, int]) -> None:
+        s, e = rng
+        want = e - s + 1
+        for attempt in range(retries):
+            try:
+                req = urllib.request.Request(url, headers={"Range": f"bytes={s}-{e}"})
+                with urllib.request.urlopen(req, timeout=120) as r, open(tmp, "r+b") as fh:  # noqa: S310
+                    # Only a 206 for exactly this range may be written: a server that
+                    # ignores Range answers 200 with the whole file, which written at
+                    # offset s would silently overwrite neighbouring, finished chunks.
+                    cr = r.headers.get("Content-Range", "")
+                    if r.status != 206 or not cr.startswith(f"bytes {s}-{e}/"):
+                        raise OSError(f"bad range response {r.status} {cr!r}")
+                    fh.seek(s)
+                    got = 0
+                    while got < want and (buf := r.read(min(1 << 20, want - got))):
+                        fh.write(buf)
+                        got += len(buf)
+                if got == want:
+                    with lock, open(done_log, "a") as fh:
+                        fh.write(f"{s}\n")
+                    return
+            except (OSError, http.client.HTTPException):   # resets, timeouts, short reads
+                pass
+            time.sleep(min(120, 10 * (attempt + 1)))
+        raise OSError(f"range {s}-{e} of {url} failed after {retries} attempts")
+
+    ranges = [(s, min(s + chunk_bytes, size) - 1) for s in range(0, size, chunk_bytes)
+              if s not in done]
+    with ThreadPoolExecutor(n_streams) as ex:
+        list(ex.map(_get, ranges))
+    tmp.rename(dest)
+    done_log.unlink(missing_ok=True)
     return dest
 
 
