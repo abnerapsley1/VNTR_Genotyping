@@ -1,8 +1,14 @@
-"""Per-repeat calibration curves (one short-read signal -> combined length).
+"""Per-repeat calibration curves (short-read signals -> combined length).
 
-Within the training range: monotone (isotonic) fit; beyond it: robust Theil-Sen line.
-The signal is the shortlist entry that best tracks the truth at that repeat.  Each
-repeat also stores a curve restricted to signals that exist for single-end reads.
+Default ("ridge"): the shortlist signals are combined per repeat by ridge regression
+(missing values filled with the training median, standardised, penalty chosen by
+leave-one-out CV) into one score; the curve is then fitted on that score.
+Alternative ("single"): the curve uses the one shortlist signal that best tracks the
+truth (|Pearson r|).  Either way the curve is a monotone (isotonic) fit within the
+training range and a robust Theil-Sen line beyond it.  Each repeat also stores a curve
+built only from signals that exist for single-end reads.
+
+A stored curve is (name, params): name is a signal (single) or "ridge".
 """
 from __future__ import annotations
 
@@ -12,6 +18,7 @@ import warnings
 import numpy as np
 from scipy.stats import theilslopes
 from sklearn.isotonic import IsotonicRegression
+from sklearn.linear_model import RidgeCV
 
 SIGNAL_SHORTLIST = [
     "depth_ratio_d20_w2000", "depth_ratio_d20_w1000", "depth_ratio_d20_w5000",
@@ -21,6 +28,8 @@ SIGNAL_SHORTLIST = [
 ]
 PAIR_SIGNALS = {"n_spanning_norm", "spanning_tlen_shift", "anchored_irr_count_norm"}
 SE_SHORTLIST = [s for s in SIGNAL_SHORTLIST if s not in PAIR_SIGNALS]
+CURVE_METHOD = "ridge"
+RIDGE_ALPHAS = np.logspace(-2, 3, 12)
 
 
 def fit_one(x: np.ndarray, y: np.ndarray) -> dict | None:
@@ -69,15 +78,68 @@ def best_fit(sig: dict[str, np.ndarray], y: np.ndarray, shortlist: list[str], mi
     return None if best is None else (best[1], best[2])
 
 
-def fit_locus(sig: dict[str, np.ndarray], y: np.ndarray, min_n: int) -> dict:
-    """Full-data curves for one repeat: {'pe': (signal, params) | None, 'se': ...}."""
-    return {"pe": best_fit(sig, y, SIGNAL_SHORTLIST, min_n), "se": best_fit(sig, y, SE_SHORTLIST, min_n)}
+def fit_ridge(sig: dict[str, np.ndarray], y: np.ndarray, shortlist: list[str], min_n: int):
+    """("ridge", params): ridge-combined score of the shortlist signals + curve on that score."""
+    ok = np.isfinite(y)
+    if ok.sum() < min_n:
+        return None
+    names = [c for c in shortlist if c in sig]
+    X = np.column_stack([sig[c] for c in names]).astype(float)[ok]
+    yy = y[ok]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        med = np.nanmedian(X, axis=0)
+    med = np.where(np.isfinite(med), med, 0.0)
+    Xf = np.where(np.isfinite(X), X, med)
+    mu, sd = Xf.mean(0), Xf.std(0)
+    sd = np.where(sd > 1e-9, sd, 1.0)
+    base = dict(signals=names, med=med.tolist(), mu=mu.tolist(), sd=sd.tolist())
+    if np.std(yy) == 0:                       # everyone has the same length at this repeat
+        v = float(yy[0])
+        return "ridge", dict(base, coef=[0.0] * len(names), intercept=v, x_min=v, x_max=v, iso_x=[v], iso_y=[v],
+                             lin_slope=0.0, lin_intercept=v, resid_sd=0.0, n=int(yy.size), train_pearson=float("nan"))
+    m = RidgeCV(alphas=RIDGE_ALPHAS).fit((Xf - mu) / sd, yy)
+    p = dict(base, coef=m.coef_.tolist(), intercept=float(m.intercept_))
+    score = _score(p, X)
+    c = fit_one(score, yy)
+    if c is None:
+        return None
+    return "ridge", dict(p, **c)
+
+
+def _score(p: dict, X: np.ndarray) -> np.ndarray:
+    X = np.where(np.isfinite(X), X, np.asarray(p["med"]))
+    return ((X - np.asarray(p["mu"])) / np.asarray(p["sd"])) @ np.asarray(p["coef"]) + p["intercept"]
+
+
+def predict_entry(entry, sig: dict[str, np.ndarray]):
+    """(estimate, outside-training-range flag) for one stored curve on rows of signals."""
+    name, p = entry
+    if name == "ridge":
+        n = len(next(iter(sig.values())))
+        X = np.column_stack([sig.get(c, np.full(n, np.nan)) for c in p["signals"]]).astype(float)
+        x = _score(p, X)
+        if p["x_min"] == p["x_max"]:          # constant-length repeat
+            return np.full(n, p["x_min"]), np.zeros(n, dtype=bool)
+    else:
+        x = np.asarray(sig[name], dtype=float)
+    return predict_one(p, x), np.isfinite(x) & ((x < p["x_min"]) | (x > p["x_max"]))
+
+
+def fit_entry(sig, y, shortlist, min_n, method: str | None = None):
+    return (fit_ridge if (method or CURVE_METHOD) == "ridge" else best_fit)(sig, y, shortlist, min_n)
+
+
+def fit_locus(sig: dict[str, np.ndarray], y: np.ndarray, min_n: int, method: str | None = None) -> dict:
+    """Full-data curves for one repeat: {'pe': (name, params) | None, 'se': ...}."""
+    return {"pe": fit_entry(sig, y, SIGNAL_SHORTLIST, min_n, method),
+            "se": fit_entry(sig, y, SE_SHORTLIST, min_n, method)}
 
 
 def oof_predict(sig: dict[str, np.ndarray], y: np.ndarray, folds: np.ndarray, min_n: int,
-                single_end: np.ndarray | None = None):
+                single_end: np.ndarray | None = None, method: str | None = None):
     """Out-of-fold curve estimates: each row predicted by a curve fitted without its fold.
-    Returns (pred, resid_sd of the full fit, signal used per row, outside-range flag)."""
+    Returns (pred, outside-range flag)."""
     pred = np.full(y.size, np.nan)
     outside = np.zeros(y.size, dtype=bool)
     se = np.zeros(y.size, dtype=bool) if single_end is None else single_end
@@ -87,13 +149,10 @@ def oof_predict(sig: dict[str, np.ndarray], y: np.ndarray, folds: np.ndarray, mi
         for mode, rows in (("pe", held & ~se), ("se", held & se)):
             if not rows.any():
                 continue
-            bf = best_fit(sub, y[fit], SIGNAL_SHORTLIST if mode == "pe" else SE_SHORTLIST, min_n)
-            if bf is None:
+            e = fit_entry(sub, y[fit], SIGNAL_SHORTLIST if mode == "pe" else SE_SHORTLIST, min_n, method)
+            if e is None:
                 continue
-            c, p = bf
-            x = sig[c][rows]
-            pred[rows] = predict_one(p, x)
-            outside[rows] = (x < p["x_min"]) | (x > p["x_max"])
+            pred[rows], outside[rows] = predict_entry(e, {c: v[rows] for c, v in sig.items()})
     return pred, outside
 
 
@@ -103,9 +162,8 @@ def apply_curves(curves: dict, sig: dict[str, np.ndarray], single_end: bool):
     n = len(next(iter(sig.values()))) if sig else 0
     if not c:
         return np.full(n, np.nan), np.full(n, np.nan), np.zeros(n, dtype=bool), None
-    name, p = c
-    x = sig[name]
-    return predict_one(p, x), np.full(n, p["resid_sd"]), (x < p["x_min"]) | (x > p["x_max"]), name
+    pred, out = predict_entry(c, sig)
+    return pred, np.full(n, c[1]["resid_sd"]), out, c[0]
 
 
 def dumps(curves: dict) -> str:

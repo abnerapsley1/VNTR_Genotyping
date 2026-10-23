@@ -93,6 +93,8 @@ model:
   # Out-of-fold folds (over train samples) for the plc / transfer predictions
   # that the global model stacks on.
   stack_cv_folds: 5
+  # per-repeat calibration curve: "ridge" (all shortlist signals combined, then isotonic) or "single"
+  curve_method: ridge
   # Parallel jobs for per-locus calibration.
   n_jobs: 16
   # PASS tier requires (y_hi - y_lo) / max(y_pred, 1) <= this.

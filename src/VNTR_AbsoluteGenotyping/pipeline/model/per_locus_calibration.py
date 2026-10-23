@@ -34,6 +34,11 @@ from sklearn.isotonic import IsotonicRegression
 
 from ..paths import load_config
 
+try:                                   # the combined (ridge) curve lives in the vntrlen package
+    from vntrlen import curves as _vc
+except ImportError:                    # pragma: no cover
+    _vc = None
+
 _SIGNAL_SHORTLIST = [
     "depth_ratio_d20_w2000", "depth_ratio_d20_w1000", "depth_ratio_d20_w5000",
     "depth_ratio_d1_w2000", "array_depth_d20_norm",
@@ -100,8 +105,20 @@ def _best_fit(x_cols: dict[str, np.ndarray], y: np.ndarray, min_n: int):
     return None if best is None else best[1:]
 
 
+def _fit(sig, y, min_n, method):
+    if method == "ridge":
+        return _vc.fit_ridge(sig, y, [c for c in _SIGNAL_SHORTLIST if c in sig], min_n)
+    return _best_fit(sig, y, min_n)
+
+
+def _pred(entry, sig, rows):
+    if entry[0] == "ridge":
+        return _vc.predict_entry(entry, {c: x[rows] for c, x in sig.items()})[0]
+    return _predict_one(entry[1], sig[entry[0]][rows])
+
+
 def _calibrate_locus(lid, sig: dict[str, np.ndarray], y: np.ndarray,
-                     is_tr: np.ndarray, cvf: np.ndarray, k: int, min_n: int):
+                     is_tr: np.ndarray, cvf: np.ndarray, k: int, min_n: int, method: str = "ridge"):
     """Fit one locus.  Returns (fit summary, preds, signal per row).
 
     Non-train-sample rows are predicted by the fit on all train samples; each
@@ -110,23 +127,23 @@ def _calibrate_locus(lid, sig: dict[str, np.ndarray], y: np.ndarray,
     """
     pred = np.full(y.size, np.nan)
     used = np.full(y.size, None, dtype=object)
-    full = _best_fit({c: x[is_tr] for c, x in sig.items()}, y[is_tr], min_n)
+    full = _fit({c: x[is_tr] for c, x in sig.items()}, y[is_tr], min_n, method)
     if full is None:
         return dict(locus_id=lid, signal=None, n=int(is_tr.sum()), train_pearson=None,
                     resid_sd=None, lin_slope=None, lin_intercept=None,
                     x_min=None, x_max=None), pred, used, np.nan
     col, params = full
     out = ~is_tr
-    pred[out] = _predict_one(params, sig[col][out])
+    pred[out] = _pred(full, sig, out)
     used[out] = col
     for f in range(k):
         held = is_tr & (cvf == f)
         if not held.any():
             continue
         fit = is_tr & (cvf != f)
-        sub = _best_fit({c: x[fit] for c, x in sig.items()}, y[fit], min_n)
+        sub = _fit({c: x[fit] for c, x in sig.items()}, y[fit], min_n, method)
         if sub is not None:
-            pred[held] = _predict_one(sub[1], sig[sub[0]][held])
+            pred[held] = _pred(sub, sig, held)
             used[held] = sub[0]
     summary = dict(locus_id=lid, signal=col, **{
         k_: params[k_] for k_ in ("n", "train_pearson", "resid_sd",
@@ -134,10 +151,10 @@ def _calibrate_locus(lid, sig: dict[str, np.ndarray], y: np.ndarray,
     return summary, pred, used, params["resid_sd"]
 
 
-def _calibrate_chunk(groups, k, min_n):
+def _calibrate_chunk(groups, k, min_n, method="ridge"):
     warnings.filterwarnings("ignore")
     np.seterr(all="ignore")
-    return [_calibrate_locus(*g, k=k, min_n=min_n) for g in groups]
+    return [_calibrate_locus(*g, k=k, min_n=min_n, method=method) for g in groups]
 
 
 def build(cfg) -> None:
@@ -147,6 +164,9 @@ def build(cfg) -> None:
     k = int(cfg.get("model.stack_cv_folds", 5))
     seed = int(cfg.get("model.random_seed", 20260831))
     n_jobs = int(cfg.get("model.n_jobs", 16))
+    method = str(cfg.get("model.curve_method", "ridge"))
+    if method == "ridge" and _vc is None:
+        raise SystemExit("model.curve_method 'ridge' needs the vntrlen package (pip install -e src/vntrlen)")
 
     cols_present = [c for c in _SIGNAL_SHORTLIST if c in tbl.columns]
     if not cols_present:
@@ -167,10 +187,10 @@ def build(cfg) -> None:
                        g["cvf"].to_numpy()))
     n_chunks = max(1, n_jobs * 8)
     chunks = [groups[i::n_chunks] for i in range(n_chunks)]
-    print(f"per-locus calibration: {len(groups):,} train-fold loci, {k}-fold cross-fit, "
+    print(f"per-locus calibration ({method} curves): {len(groups):,} train-fold loci, {k}-fold cross-fit, "
           f"{n_jobs} jobs")
     results = [r for part in Parallel(n_jobs=n_jobs)(
-        delayed(_calibrate_chunk)(c, k, min_n) for c in chunks) for r in part]
+        delayed(_calibrate_chunk)(c, k, min_n, method) for c in chunks) for r in part]
 
     by_lid = {g[0]: r for g, r in zip((g for c in chunks for g in c), results)}
     fits, preds = [], []

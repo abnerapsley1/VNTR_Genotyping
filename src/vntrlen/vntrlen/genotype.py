@@ -50,16 +50,13 @@ def add_curve_estimates(feat: pl.DataFrame, loci: pl.DataFrame, single_end: bool
         c = pc.get(lid)
         if not c:
             continue
-        mode = c.get("se" if single_end else "pe") or c.get("pe") or c.get("se")
-        if not mode:
+        entry = c.get("se" if single_end else "pe") or c.get("pe") or c.get("se")
+        if not entry:
             continue
-        name, p = mode
-        rsd[i] = p["resid_sd"]            # the repeat's curve reliability, even if this person's signal is missing
-        x = cols[name][i]
-        if not np.isfinite(x):
-            continue
-        pred[i] = curves.predict_one(p, np.array([x]))[0]
-        out[i] = x < p["x_min"] or x > p["x_max"]
+        rsd[i] = entry[1]["resid_sd"]     # the repeat's curve reliability, even if this person's signal is missing
+        pv, ov = curves.predict_entry(entry, {k: v[i:i + 1] for k, v in cols.items()})
+        if np.isfinite(pv[0]):
+            pred[i], out[i] = pv[0], bool(ov[0])
     return feat.with_columns(plc_pred=pl.Series(pred), plc_resid_sd=pl.Series(rsd),
                              plc_available=pl.Series(np.isfinite(pred).astype(float)),
                              curve_outside_range=pl.Series(out))
