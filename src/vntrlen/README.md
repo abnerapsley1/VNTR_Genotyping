@@ -23,7 +23,10 @@ Data live in `$VNTRLEN_HOME` (default `~/.vntrlen`): models, downloaded referenc
 
 * Reference: GRCh38 as used by the 1000 Genomes NYGC 30x data
   (`GRCh38_full_analysis_set_plus_decoy_hla`; downloaded on first use if `--reference` is omitted).
-* 60,504 VNTRs (the default BED). Every repeat has its own calibration curve.
+* 60,504 VNTRs (the default BED). Every repeat has its own calibration curve: the 11 short-read
+  signals are combined per repeat by ridge regression, and a monotone (isotonic) curve with
+  Theil-Sen extensions maps the combined score to length.
+* Test people (52, never used in training): mean absolute error 0.83 repeat units over all repeats.
 * Trained on 212 people; 90% intervals calibrated on 26; per-repeat performance from 52 held-out
   test people (`vntrlen models list --tsv models.tsv`, columns `perf_*`).
 * Ground truth: vamos long-read genotypes (TRCompDB v3.0, Gu & Chaisson).

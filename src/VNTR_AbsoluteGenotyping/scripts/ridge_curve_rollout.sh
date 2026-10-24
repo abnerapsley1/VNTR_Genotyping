@@ -14,9 +14,15 @@ mkdir -p $OUT
 step() { echo; echo "===== $(date '+%F %T')  $* ====="; }
 
 step "1/4 refit with ridge curves into work/model_ridge"
-rm -rf work/model_ridge && cp -a work/model work/model_ridge
-sed "s|work/model$|work/model_ridge|" config/config.yaml > work/model_ridge/config.yaml
-for s in calibrate global per-allele evaluate; do
+STEPS="calibrate global per-allele evaluate"
+if [ "${RESUME:-0}" = "1" ] && [ -f work/model_ridge/plc_predictions.parquet ]; then
+  echo "resuming: ridge curves already fitted in work/model_ridge"
+  STEPS="global per-allele evaluate"
+else
+  rm -rf work/model_ridge && cp -a work/model work/model_ridge
+  sed "s|work/model$|work/model_ridge|" config/config.yaml > work/model_ridge/config.yaml
+fi
+for s in $STEPS; do
   step "  $s"
   python -u -m pipeline.cli $s --config work/model_ridge/config.yaml || { echo "FAILED at $s"; exit 1; }
 done

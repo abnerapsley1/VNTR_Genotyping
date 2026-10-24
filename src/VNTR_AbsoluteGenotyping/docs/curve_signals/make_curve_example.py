@@ -22,7 +22,8 @@ W = D.parents[1] / "work"
 BUNDLE = Path("/data/GitHub_Repos/VNTR_Genotyping/data/vntrlen_bundle/52ec291b8f70/shipped_GRCh38_v1/loci.parquet")
 SURF, INK, INK2, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#e4e3df"
 BLUE, ORANGE, AQUA = "#2a78d6", "#eb6834", "#1baf7a"
-LABEL = {"depth_ratio_d20_w5000": "depth ratio (MAPQ >= 20, 5 kb flanks)",
+LABEL = {"ridge": "combined score of all 11 signals (per-repeat ridge regression)",
+         "depth_ratio_d20_w5000": "depth ratio (MAPQ >= 20, 5 kb flanks)",
          "depth_ratio_d0_w2000": "depth ratio (all reads, 2 kb flanks)",
          "irr_count_norm": "in-repeat reads per 1x flank depth"}
 
@@ -30,8 +31,12 @@ LABEL = {"depth_ratio_d20_w5000": "depth ratio (MAPQ >= 20, 5 kb flanks)",
 def main(lid="chr5:135778989-135785061"):
     L = pl.read_parquet(BUNDLE).filter(pl.col("locus_id") == lid).row(0, named=True)
     sig, p = json.loads(L["curves"])["pe"]
+    sigcols = p["signals"] if sig == "ridge" else [sig]
     t = pl.read_parquet(W / "model" / "model_table.parquet", columns=["locus_id", "sample_id", "sample_fold",
-                                                                     "combined_units", sig]).filter(pl.col("locus_id") == lid)
+                                                                     "combined_units", *sigcols]).filter(pl.col("locus_id") == lid)
+    if sig == "ridge":                      # x axis: the per-repeat combined signal score
+        X = t.select(p["signals"]).cast(pl.Float64).to_numpy()
+        t = t.with_columns(ridge=pl.Series(curves._score(p, X)))
     tr, te = t.filter(pl.col("sample_fold") == "train"), t.filter(pl.col("sample_fold") == "test")
     xi, yi = np.array(p["iso_x"]), np.array(p["iso_y"])
     x0, x1 = p["x_min"], p["x_max"]

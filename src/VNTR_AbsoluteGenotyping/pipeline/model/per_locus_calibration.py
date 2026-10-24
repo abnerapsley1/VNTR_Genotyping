@@ -227,10 +227,10 @@ def _quick_metrics(pred: pl.DataFrame) -> None:
             continue
         yt = s["combined_units"].to_numpy()
         yp = s["plc_pred"].to_numpy()
-        mae = float(np.median(np.abs(yp - yt)))
+        mae = float(np.median(np.abs(yp - yt)))          # median, not mean
         rho = spearmanr(yp, yt).statistic
         rel = float(np.median(np.abs(yp - yt) / np.clip(yt, 1, None)))
-        print(f"  {q:18s} n={s.height:>7,}  MAE={mae:6.2f}u  medRelErr={rel:5.2f}  "
+        print(f"  {q:18s} n={s.height:>7,}  medianAE={mae:6.2f}u  medRelErr={rel:5.2f}  "
               f"spearman={rho:+.3f}")
 
 
